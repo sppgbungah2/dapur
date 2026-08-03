@@ -1,0 +1,6 @@
+{
+  "name": "Dapur Qomaruddin",
+  "description": "Aplikasi manajemen operasional dapur pondok pesantren SPPG Qomaruddin Bungah Gresik, khususnya pengelolaan SOP harian digital multifaksi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

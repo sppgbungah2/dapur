@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <defs>
+    <style>
+      .text-ring { font-family: 'Arial Black', 'Arial', sans-serif; font-weight: 900; font-size: 20px; fill: #1A1A1A; letter-spacing: 1px; }
+    </style>
+    <path id="textArcUpper" d="M 75,250 A 175,175 0 1,1 425,250" fill="none" />
+    <path id="textArcLower" d="M 425,250 A 175,175 0 0,1 75,250" fill="none" />
+  </defs>
+
+  <!-- Outer scalloped 16-petal lotus frame -->
+  <g id="lotus-petals" fill="#FFFFFF" stroke="#2C2B29" stroke-width="6" stroke-linejoin="round">
+    <path d="
+      M 250 15 
+      C 272 15, 292 28, 298 46 
+      C 320 36, 344 42, 355 62 
+      C 374 58, 396 72, 401 93 
+      C 420 98, 437 117, 434 139 
+      C 450 152, 458 176, 450 197 
+      C 460 218, 460 244, 450 264 
+      C 458 285, 450 309, 434 322 
+      C 437 344, 420 363, 401 368 
+      C 396 389, 374 403, 355 399 
+      C 344 419, 320 425, 298 415 
+      C 292 433, 272 446, 250 446 
+      C 228 446, 208 433, 202 415 
+      C 180 425, 156 419, 145 399 
+      C 126 403, 104 389, 99 368 
+      C 80 363, 63 344, 66 322 
+      C 50 309, 42 285, 50 264 
+      C 40 244, 40 218, 50 197 
+      C 42 176, 50 152, 66 139 
+      C 63 117, 80 98, 99 93 
+      C 104 72, 126 58, 145 62 
+      C 156 42, 180 36, 202 46 
+      Z" />
+  </g>
+
+  <!-- Yellow Inner Ring -->
+  <circle cx="250" cy="230" r="200" fill="#FFF000" stroke="#2C2B29" stroke-width="5" />
+
+  <!-- Inner Globe Circle -->
+  <circle cx="250" cy="230" r="135" fill="#80CEF3" stroke="#2C2B29" stroke-width="5" />
+
+  <!-- Map Green Contours on Globe -->
+  <path d="M 140 180 C 150 160, 185 150, 205 170 C 225 190, 245 170, 265 190 C 285 210, 315 190, 335 210 C 355 230, 375 220, 385 250 C 375 300, 320 350, 250 365 C 190 350, 145 310, 135 250 Z" fill="#2E8B57" opacity="0.95" />
+
+  <!-- Latitude / Longitude lines on Globe -->
+  <ellipse cx="250" cy="230" rx="135" ry="45" fill="none" stroke="#1C5D8B" stroke-width="2" />
+  <ellipse cx="250" cy="230" rx="135" ry="90" fill="none" stroke="#1C5D8B" stroke-width="2" />
+  <line x1="250" y1="95" x2="250" y2="365" stroke="#1C5D8B" stroke-width="2" />
+  <line x1="115" y1="230" x2="385" y2="230" stroke="#1C5D8B" stroke-width="2" />
+
+  <!-- Circular Ring Border Inner -->
+  <circle cx="250" cy="230" r="135" fill="none" stroke="#2C2B29" stroke-width="5" />
+
+  <!-- Text along Yellow Ring -->
+  <text class="text-ring">
+    <textPath href="#textArcUpper" startOffset="50%" text-anchor="middle">YAYASAN PONDOK PESANTREN QOMARUDDIN</textPath>
+  </text>
+  <text class="text-ring">
+    <textPath href="#textArcLower" startOffset="50%" text-anchor="middle">• SAMPURNAN BUNGAH GRESIK •</textPath>
+  </text>
+
+  <!-- CENTER EMBLEM SYMBOLS -->
+  <!-- 1. Open Book / Kitab (Yellow Pages & Black Outline) -->
+  <g id="open-book">
+    <path d="M 250 310 Q 185 285 140 320 L 150 265 Q 195 235 250 255 Z" fill="#FFF000" stroke="#2C2B29" stroke-width="4" stroke-linejoin="round" />
+    <path d="M 250 310 Q 315 285 360 320 L 350 265 Q 305 235 250 255 Z" fill="#FFF000" stroke="#2C2B29" stroke-width="4" stroke-linejoin="round" />
+    <line x1="250" y1="255" x2="250" y2="310" stroke="#2C2B29" stroke-width="4" />
+  </g>
+
+  <!-- 2. Minaret / Tugu Center Tower -->
+  <g id="tugu-menara" fill="#FFFFFF" stroke="#2C2B29" stroke-width="4" stroke-linejoin="round">
+    <path d="M 235 255 L 265 255 L 260 175 L 240 175 Z" />
+    <rect x="235" y="170" width="30" height="8" rx="2" fill="#2C2B29" />
+    <path d="M 240 170 Q 250 125 250 110 Q 250 125 260 170 Z" fill="#FFFFFF" />
+    <circle cx="250" cy="105" r="7" fill="#2C2B29" />
+    <path d="M 250 92 L 250 98" stroke="#2C2B29" stroke-width="3" />
+  </g>
+
+  <!-- 3. White Quill Pen -->
+  <g id="feather-quill" fill="#FFFFFF" stroke="#2C2B29" stroke-width="3">
+    <path d="M 320 180 Q 255 240 210 290 Q 250 265 295 220 Q 320 190 320 180 Z" fill="#FFFFFF" />
+    <line x1="320" y1="180" x2="205" y2="295" stroke="#2C2B29" stroke-width="3" />
+  </g>
+</svg>

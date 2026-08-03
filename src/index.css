@@ -1,0 +1,121 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* Custom styles for animations and interface polish */
+.perspective-800 {
+  perspective: 800px;
+}
+
+/* Print styling to strictly replicate paper SOP from the attachment */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt !important;
+    font-family: 'Times New Roman', Times, serif !important;
+  }
+
+  /* Hide navigation, sidebars, and non-printable controls, but allow print overlays */
+  nav, sidebar, aside, button, .no-print, #role-bar, #nav-sidebar, .modal-actions, .tab-buttons {
+    display: none !important;
+    height: 0 !important;
+    width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Override .fixed for printable overlays */
+  .fixed {
+    display: none !important;
+  }
+
+  #daily-report-print-overlay,
+  #stock-opname-print-overlay,
+  #stock-operasional-print-overlay,
+  .print-overlay-container {
+    display: block !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    background: white !important;
+    z-index: 99999 !important;
+    overflow: visible !important;
+  }
+
+  /* Force images (logos) to remain visible during print */
+  img {
+    display: inline-block !important;
+    max-width: 100% !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Expand print-container to occupy full page */
+  .print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    display: block !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Table borders in high contrast for ink conservation */
+  .print-table {
+    border: 1.5px solid black !important;
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+
+  .print-table th, .print-table td {
+    border: 1px solid black !important;
+    color: black !important;
+    padding: 8px !important;
+  }
+
+  /* Make sure checked boxes show as clearly checked on ink printers */
+  input[type="checkbox"] {
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    border: 1.5px solid black !important;
+    width: 14px !important;
+    height: 14px !important;
+    display: inline-block !important;
+    position: relative !important;
+  }
+
+  input[type="checkbox"]:checked::after {
+    content: "✔" !important;
+    font-size: 10px !important;
+    font-weight: bold !important;
+    position: absolute !important;
+    top: -2px !important;
+    left: 1px !important;
+    color: black !important;
+  }
+
+  /* Keep signatures visible in high contrast black/white */
+  .sig-canvas {
+    filter: grayscale(1) !important;
+    mix-blend-mode: multiply !important;
+    max-height: 80px !important;
+  }
+
+  /* Avoid page break mid-table if possible */
+  .page-card {
+    page-break-inside: avoid !important;
+  }
+}
+
