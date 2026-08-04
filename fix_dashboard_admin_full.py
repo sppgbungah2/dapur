@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import re
+
+content = """import React, { useState, useEffect } from 'react';
 import { 
   Calendar, CheckCircle2, Shield, Eye, Loader2, Save, Printer, 
   LayoutDashboard, Users, CheckSquare, Award, Trash2, BookOpen, AlertCircle, FileText, ChevronLeft, ChevronRight, Check, X, Database
@@ -44,7 +46,6 @@ export default function DashboardAdminView({
 }: DashboardAdminViewProps) {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isSetMasterOpen, setIsSetMasterOpen] = useState(false);
-  const [masterDate, setMasterDate] = useState(selectedDate);
   const [portions, setPortions] = useState<PortionConfig>({ ...DEFAULT_PORTIONS });
 
   // For the monthly calendar view
@@ -66,24 +67,22 @@ export default function DashboardAdminView({
       let sopData: any[] = [];
 
       if (isSupabaseConfigured && supabase) {
-        const [resMenus, resPortions, resSops, resSj, resBast, resOrlep] = await Promise.all([
+        const [resMenus, resPortions, resDocs, resSops] = await Promise.all([
           supabase.from('day_menus').select('*').gte('date', startDate).lte('date', endDate),
           supabase.from('master_porsi').select('date, portions').gte('date', startDate).lte('date', endDate),
-          supabase.from('sops').select('date, status, signature_supervisor_url, signature_coordinator_url, is_checked_all').gte('date', startDate).lte('date', endDate),
-          supabase.from('surat_jalan_docs').select('date, sj_signature_receiver, sj_signature_aslap').gte('date', startDate).lte('date', endDate),
-          supabase.from('bast_docs').select('date, bast_signature_receiver, status').gte('date', startDate).lte('date', endDate),
-          supabase.from('organoleptik_docs').select('date, orlep_signature, status').gte('date', startDate).lte('date', endDate)
+          supabase.from('shipping_docs').select('date, type, status, content').gte('date', startDate).lte('date', endDate),
+          supabase.from('sops').select('date, status, signature_supervisor_url, signature_coordinator_url, is_checked_all').gte('date', startDate).lte('date', endDate)
         ]);
         
         menus = resMenus.data || [];
         portionsData = resPortions.data || [];
+        docs = (resDocs.data || []).map(d => ({
+           date: d.date,
+           type: d.type,
+           status: d.status,
+           ...(d.content || {})
+        }));
         sopData = resSops.data || [];
-        
-        docs = [
-           ...(resSj.data || []).map(d => ({ date: d.date, type: 'surat_jalan', sjSignatureReceiver: d.sj_signature_receiver })),
-           ...(resBast.data || []).map(d => ({ date: d.date, type: 'serah_terima', bastSignatureReceiver: d.bast_signature_receiver })),
-           ...(resOrlep.data || []).map(d => ({ date: d.date, type: 'organoleptik', orlepSignature: d.orlep_signature }))
-        ];
       } else {
         menus = allDayMenus.filter(m => m.date.startsWith(`${year}-${String(month).padStart(2, '0')}`));
         docs = shippingDocs.filter(d => d.date.startsWith(`${year}-${String(month).padStart(2, '0')}`));
@@ -104,6 +103,25 @@ export default function DashboardAdminView({
         const dayOrlep = docs.filter(d => d.type === 'organoleptik' && d.date === dStr);
         const daySop = sopData.filter(d => d.date === dStr);
 
+        const checkDocStatus = (arr: any[], sigField: string) => {
+          if (arr.length === 0) return 'Belum Ada';
+          const allSigned = arr.every(d => d[sigField] && String(d[sigField]).length > 10);
+          return allSigned ? 'Lengkap & TTD' : 'Lengkap';
+        };
+
+        const sjStatus = checkDocStatus(daySj, 'sjSignatureReceiver');
+        const bastStatus = checkDocStatus(dayBast, 'bastSignatureReceiver');
+        const orlepStatus = checkDocStatus(dayOrlep, 'orlepSignature');
+
+        let sopStatus = 'Belum Ada';
+        if (daySop.length > 0) {
+          const allSigned = daySop.every(s => 
+            s.signature_supervisor_url && String(s.signature_supervisor_url).length > 10 &&
+            s.signature_coordinator_url && String(s.signature_coordinator_url).length > 10
+          );
+          sopStatus = allSigned ? 'Lengkap & TTD' : 'Lengkap';
+        }
+
         let totalPM = 0;
         if (dayPorsi && dayPorsi.portions) {
           const p = dayPorsi.portions;
@@ -113,52 +131,6 @@ export default function DashboardAdminView({
                     ((p.SMA?.siswa || 0) + (p.SMA?.guru || 0)) +
                     ((p.Sukowati?.besar || 0) + (p.Sukowati?.kecil || 0)) +
                     ((p.Sidokumpul?.besar || 0) + (p.Sidokumpul?.kecil || 0));
-        }
-
-        // Calculate expected shipments based on configured portions
-        let expectedShipments = 0;
-        if (dayPorsi && dayPorsi.portions) {
-          const p = dayPorsi.portions;
-          if ((p.MA?.siswa || 0) > 0 || (p.MA?.guru || 0) > 0) expectedShipments++;
-          if ((p["MTS II"]?.siswa || 0) > 0 || (p["MTS II"]?.guru || 0) > 0) expectedShipments++;
-          if ((p.SMK?.siswa || 0) > 0 || (p.SMK?.guru || 0) > 0) expectedShipments++;
-          if ((p.SMA?.siswa || 0) > 0 || (p.SMA?.guru || 0) > 0) expectedShipments++;
-          if ((p.Sukowati?.besar || 0) > 0 || (p.Sukowati?.kecil || 0) > 0) expectedShipments++;
-          if ((p.Sidokumpul?.besar || 0) > 0 || (p.Sidokumpul?.kecil || 0) > 0) expectedShipments++;
-        }
-        
-        // If no portions configured for the day, maybe default to 6 to show they are missing, 
-        // or default to 0 if we assume nothing should be shipped. Let's use 6 as default expected if portions exist.
-        if (expectedShipments === 0 && totalPM > 0) expectedShipments = 6;
-        if (totalPM === 0) expectedShipments = 0; // Don't expect docs if 0 portions
-
-
-        const checkDocStatus = (arr: any[], sigField: string, expectedCount: number = 6) => {
-          if (expectedCount === 0) return 'Belum Ada'; // Nothing expected
-          if (arr.length === 0) return 'Belum Ada';
-          const allSigned = arr.every(d => d[sigField] && String(d[sigField]).length > 10);
-          if (arr.length < expectedCount) {
-             return `${arr.length}/${expectedCount} Dokumen`;
-          }
-          return allSigned ? 'Lengkap & TTD' : 'Lengkap';
-        };
-
-        const sjStatus = checkDocStatus(daySj, 'sjSignatureReceiver', expectedShipments);
-        const bastStatus = checkDocStatus(dayBast, 'bastSignatureReceiver', expectedShipments);
-        const orlepStatus = checkDocStatus(dayOrlep, 'orlepSignature', expectedShipments);
-
-        let sopStatus = 'Belum Ada';
-        if (daySop.length > 0) {
-          const expectedSOPCount = 7; // Divisi Masak, Pemorsian, Driver, Cuci, Kebersihan, Keamanan, Stocking
-          const allSigned = daySop.every(s => 
-            s.signature_supervisor_url && String(s.signature_supervisor_url).length > 10 &&
-            s.signature_coordinator_url && String(s.signature_coordinator_url).length > 10
-          );
-          if (daySop.length < expectedSOPCount) {
-             sopStatus = `${daySop.length}/${expectedSOPCount} Dokumen`;
-          } else {
-             sopStatus = allSigned ? 'Lengkap & TTD' : 'Lengkap';
-          }
         }
 
         aggregated[dStr] = {
@@ -196,9 +168,6 @@ export default function DashboardAdminView({
     }
     if (status === 'Lengkap') {
       return <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap">Lengkap</span>;
-    }
-    if (status.includes('/')) {
-      return <span className="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap">{status}</span>;
     }
     return <span className="bg-neutral-100 text-neutral-400 text-[10px] px-2 py-0.5 rounded-full font-bold whitespace-nowrap"><X className="inline w-3 h-3 mr-1"/>Belum Ada</span>;
   };
@@ -253,19 +222,9 @@ export default function DashboardAdminView({
 
       {/* Set Master Expanded Section */}
       {isSetMasterOpen && (
-        <div className="animate-fade-in border border-emerald-200 bg-emerald-50/30 rounded-2xl p-4 space-y-4">
-          <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-emerald-100 shadow-sm w-fit">
-            <Calendar className="w-4 h-4 text-emerald-600" />
-            <label className="text-xs font-bold text-neutral-700">Tanggal Master:</label>
-            <input 
-              type="date"
-              value={masterDate}
-              onChange={(e) => setMasterDate(e.target.value)}
-              className="text-sm border-none bg-transparent outline-none font-mono text-emerald-800 font-bold"
-            />
-          </div>
+        <div className="animate-fade-in border border-emerald-200 bg-emerald-50/30 rounded-2xl p-2">
           <PerencanaanMenuPorsi 
-            selectedDate={masterDate} 
+            selectedDate={selectedDate} 
             onSuccess={msg => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(null), 3500); setIsSetMasterOpen(false); fetchMonthlyData(currentMonth); }} 
             onGenerateSOPs={onGenerateSOPs!} 
             shippingDocs={shippingDocs} 
@@ -356,3 +315,7 @@ export default function DashboardAdminView({
     </div>
   );
 }
+"""
+
+with open('src/components/DashboardAdminView.tsx', 'w') as f:
+    f.write(content)

@@ -2177,70 +2177,7 @@ export default function MockModules({
   }
 
   // Shipping Docs States with LocalStorage synchronization
-  const [shippingDocs, setRawShippingDocs] = useState<ShippingDocItem[]>(() => {
-    const saved = localStorage.getItem('sppg_shipping_docs');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.warn('Error parsing shipping docs:', e);
-      }
-    }
-    return [
-      {
-        id: 'doc-1',
-        type: 'ompreng',
-        date: '2026-06-16',
-        vehicleNumber: 'W 1234 BGH',
-        imageUrl: 'https://images.unsplash.com/photo-1594212699903-ec8a3cee50f6?w=400&auto=format&fit=crop&q=80',
-        comments: 'Pengiriman 12 koli ompreng untuk asrama timur, kondisi bersih dan tertutup rapat.',
-        uploadedBy: 'driver@sppg.com',
-        uploadedAt: '2026-06-16T11:30:00.000Z',
-        receiverName: 'Ustadz Jauhari',
-        status: 'Selesai Kirim'
-      },
-      {
-        id: 'doc-2',
-        type: 'serah_terima',
-        date: '2026-06-16',
-        vehicleNumber: 'W 5678 AA',
-        imageUrl: 'https://images.unsplash.com/photo-1580519542036-c47de6196ba5?w=400&auto=format&fit=crop&q=80',
-        comments: 'Lembar BAST ditandatangani oleh Pengurus Asrama Putri C.',
-        uploadedBy: 'driver@sppg.com',
-        uploadedAt: '2026-06-16T12:05:00.000Z',
-        receiverName: 'Ibu Muslihah',
-        status: 'Terverifikasi'
-      },
-      {
-        id: 'doc-3',
-        type: 'surat_jalan',
-        date: '2026-06-17',
-        vehicleNumber: 'W 1234 BGH',
-        imageUrl: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=400&auto=format&fit=crop&q=80',
-        comments: 'Surat Jalan No. 104/SJ-SPPG/VI/2026.',
-        uploadedBy: 'driver@sppg.com',
-        uploadedAt: '2026-06-17T07:15:00.000Z',
-        receiverName: 'Ustadz Hakim',
-        status: 'Dalam Perjalanan'
-      },
-      {
-        id: 'doc-4',
-        type: 'organoleptik',
-        date: '2026-06-17',
-        vehicleNumber: 'W 1234 BGH',
-        imageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&auto=format&fit=crop&q=80',
-        comments: 'Uji organoleptik menu Nasi Sup Ayam Karkas Gizi.',
-        uploadedBy: 'driver@sppg.com',
-        uploadedAt: '2026-06-17T07:20:00.000Z',
-        receiverName: 'Ustadzah Aminah',
-        status: 'Lulus Uji',
-        organoleptikRasa: 'Sangat Layak (Segar & Gurih)',
-        organoleptikAroma: 'Sangat Harum',
-        organoleptikTekstur: 'Sangat Empuk',
-        organoleptikSuhu: '72'
-      }
-    ];
-  });
+  const [shippingDocs, setRawShippingDocs] = useState<ShippingDocItem[]>([]);
 
   const syncShippingDocsToSupabase = async (prev: ShippingDocItem[], next: ShippingDocItem[]) => {
     if (!isSupabaseConfigured || !supabase) return;
@@ -2374,7 +2311,6 @@ export default function MockModules({
   const setShippingDocs = (update: React.SetStateAction<ShippingDocItem[]>) => {
     setRawShippingDocs(prev => {
       const next = typeof update === 'function' ? (update as any)(prev) : update;
-      safeLocalStorageSetItem('sppg_shipping_docs', JSON.stringify(next));
       setTimeout(() => {
         syncShippingDocsToSupabase(prev, next);
       }, 0);
@@ -2938,23 +2874,7 @@ export default function MockModules({
           }
 
           const allFetched = Array.from(combinedMap.values());
-          if (allFetched.length > 0) {
-            setRawShippingDocs(allFetched);
-          } else {
-            // Fallback to local storage if no cloud data for this date
-            const savedLocal = localStorage.getItem('sppg_shipping_docs');
-            if (savedLocal) {
-              try {
-                const parsed = JSON.parse(savedLocal);
-                if (parsed && parsed.length > 0) {
-                  const filteredLocal = parsed.filter((d: any) => d.date === targetDate);
-                  setRawShippingDocs(filteredLocal.length > 0 ? filteredLocal : parsed);
-                }
-              } catch (e) {
-                console.warn("Error parsing local shipping docs:", e);
-              }
-            }
-          }
+          setRawShippingDocs(allFetched);
         } catch (err) {
           console.warn("Failed fetching documents:", err);
         }

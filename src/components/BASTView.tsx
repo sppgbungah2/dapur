@@ -29,6 +29,9 @@ export default function BASTView({
 }: BASTViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeDoc, setActiveDoc] = useState<any | null>(null);
+  const [activeDateView, setActiveDateView] = useState<string | null>(null);
+  const viewDate = activeDateView || selectedDate;
+  const localSelectedDate = viewDate;
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -61,13 +64,13 @@ export default function BASTView({
   const isAkunUtama = currentUserRole === UserRole.ADMIN || (loggedInUser?.email && ['punkysme@gmail.com', 'ketua@sppg.com'].includes(loggedInUser.email.toLowerCase().trim()));
 
   // Daily list of docs for selected date (for releasing check)
-  const dateDocs = shippingDocs.filter(d => d.type === 'serah_terima' && d.date === selectedDate);
+  const dateDocs = shippingDocs.filter(d => d.type === 'serah_terima' && d.date === viewDate);
 
   // Full dataset for filters & rekapitulasi
   const allBastDocs = shippingDocs.filter(d => d.type === 'serah_terima');
 
   // Filtered list based on role and choices
-  const filteredDocs = allBastDocs.filter(doc => {
+  const filteredDocs = shippingDocs.filter(d => d.type === "serah_terima").filter(doc => {
     // 1. Role boundaries
     if (restrictedLocation && doc.bastSekolah !== restrictedLocation) return false;
     
@@ -111,7 +114,7 @@ export default function BASTView({
   // Auto select for Penerima if exists
   useEffect(() => {
     if (restrictedLocation) {
-      const allSerahTerimaForDate = shippingDocs.filter(d => d.type === 'serah_terima' && d.date === selectedDate);
+      const allSerahTerimaForDate = shippingDocs.filter(d => d.type === 'serah_terima' && d.date === viewDate);
       if (allSerahTerimaForDate.length > 0 && !activeDoc) {
         const matched = allSerahTerimaForDate.find(d => d.bastSekolah === restrictedLocation);
         if (matched) {
@@ -164,7 +167,8 @@ export default function BASTView({
 
   // Auto initialize BAST for 6 locations
   const handleInitializeBAST = async () => {
-    const existing = shippingDocs.filter(d => d.type === 'serah_terima' && d.date === selectedDate);
+    const initDate = activeDateView || selectedDate;
+    const existing = shippingDocs.filter(d => d.type === 'serah_terima' && d.date === initDate);
     if (existing.length > 0) {
       setErrorMsg('Berkas BAST untuk tanggal ini sudah diinisialisasi dan tidak dapat dibuat lagi.');
       setTimeout(() => setErrorMsg(null), 4000);
@@ -184,12 +188,12 @@ export default function BASTView({
         const { data, error } = await supabase
           .from('master_porsi')
           .select('portions')
-          .eq('date', selectedDate)
+          .eq('date', initDate)
           .maybeSingle();
         
         if (error) {
           console.warn("Could not load portions from Supabase for BAST, trying local cache:", error);
-          const saved = localStorage.getItem(`sppg_portions_${selectedDate}`);
+          const saved = localStorage.getItem(`sppg_portions_${initDate}`);
           if (saved) {
             portions = JSON.parse(saved);
           } else {
@@ -209,7 +213,7 @@ export default function BASTView({
           if (tplData && tplData.portions) {
             portions = tplData.portions as PortionConfig;
           } else {
-            const saved = localStorage.getItem(`sppg_portions_${selectedDate}`);
+            const saved = localStorage.getItem(`sppg_portions_${initDate}`);
             if (saved) {
               portions = JSON.parse(saved);
             } else {
@@ -219,7 +223,7 @@ export default function BASTView({
           }
         }
       } else {
-        const saved = localStorage.getItem(`sppg_portions_${selectedDate}`);
+        const saved = localStorage.getItem(`sppg_portions_${initDate}`);
         if (saved) {
           portions = JSON.parse(saved);
         } else {
@@ -736,18 +740,78 @@ export default function BASTView({
     );
   }
 
+  // Grid of Date Cards View
+  if (!activeDateView) {
+    // Collect all dates from menus
+    const dates = [...(allDayMenus || [])].sort((a,b) => a.date.localeCompare(b.date));
+    
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h2 className="text-xl font-extrabold font-sans text-neutral-900 flex items-center gap-2 tracking-tight">
+              <FileText className="h-6 w-6 text-emerald-800 shrink-0" />
+              Arsip BAST Logistik Harian
+            </h2>
+            <p className="text-xs text-neutral-500 font-mono">
+              Silakan pilih tanggal untuk melihat atau menginisiasi BAST.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          {dates.map(mn => {
+            const docsForDate = shippingDocs.filter(d => d.type === "serah_terima").filter(d => d.date === mn.date);
+            const totalDocs = docsForDate.length;
+            const signedDocs = docsForDate.filter(d => d.bastSignatureDriver && d.bastSignatureReceiver).length;
+            const hasDocs = totalDocs > 0;
+            
+            return (
+              <div 
+                key={mn.date}
+                onClick={() => setActiveDateView(mn.date)}
+                className="bg-white border border-neutral-200 hover:border-emerald-600 rounded-2xl p-5 shadow-3xs cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group flex flex-col justify-between"
+              >
+                <div>
+                  <span className="text-[10px] text-neutral-400 font-mono block uppercase tracking-wider mb-1">
+                    TANGGAL DISTRIBUSI
+                  </span>
+                  <h4 className="font-bold text-sm text-neutral-850 group-hover:text-emerald-800 transition-colors">
+                    {mn.date}
+                  </h4>
+                  <p className="text-[10px] text-neutral-500 mt-2">
+                    {hasDocs ? `${signedDocs} dari ${totalDocs} BAST TTD Lengkap` : 'BAST Belum Diinisiasi'}
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-neutral-100 flex justify-end">
+                  <span className="text-[10px] font-bold flex items-center gap-1 text-emerald-700">
+                    Buka Detail <ChevronRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   // Dashboard / List View
-  const totalBAST = filteredDocs.length;
-  const completedBAST = filteredDocs.filter(d => d.status === 'Selesai').length;
-  const activeBAST = filteredDocs.filter(d => d.status === 'Aktif').length;
-  
+  const filteredDocsByDate = filteredDocs.filter(d => d.date === viewDate);
+  const totalBAST = filteredDocsByDate.length;
+  const completedBAST = filteredDocsByDate.filter(d => d.status === 'Selesai').length;
+  const activeBAST = filteredDocsByDate.filter(d => d.status === 'Aktif').length;
+
   let totalSigsNeeded = totalBAST * 2;
   let filledSigs = 0;
-  filteredDocs.forEach(d => {
+  filteredDocsByDate.forEach(d => {
     if (d.bastSignatureDriver) filledSigs++;
     if (d.bastSignatureReceiver) filledSigs++;
   });
   const complianceScore = totalSigsNeeded > 0 ? Math.round((filledSigs / totalSigsNeeded) * 100) : 100;
+  
+  // Override selectedDate behavior for internal components
+
 
   return (
     <div className="space-y-6 animate-fade-in" id="bast-dashboard">
@@ -886,12 +950,12 @@ export default function BASTView({
               onChange={e => setFilterDate(e.target.value as any)}
               className="border border-neutral-200 bg-neutral-50/50 rounded-xl px-3 py-1.5 text-xs outline-hidden focus:bg-white focus:ring-1 focus:ring-emerald-700"
             >
-              <option value="selected">Tanggal Terpilih ({selectedDate})</option>
+              <option value="selected">Tanggal Terpilih ({viewDate})</option>
               <option value="all">Semua Tanggal (Arsip Historis)</option>
             </select>
           ) : (
             <div className="bg-neutral-50 border border-neutral-100 rounded-xl px-3 py-1.5 text-xs text-neutral-500 font-mono font-bold flex items-center justify-center">
-              📅 Hari Ini: {selectedDate}
+              📅 Hari Ini: {viewDate}
             </div>
           )}
         </div>
@@ -904,7 +968,7 @@ export default function BASTView({
           <div className="space-y-1.5">
             <h4 className="text-neutral-700 font-bold text-sm">Arsip BAST Belum Dirilis untuk Hari Ini</h4>
             <p className="text-xs text-neutral-400 max-w-sm mx-auto">
-              Berkas digital Berita Acara Serah Terima makanan untuk 6 lokasi sasaran belum diinisialisasi untuk tanggal {selectedDate}.
+              Berkas digital Berita Acara Serah Terima makanan untuk 6 lokasi sasaran belum diinisialisasi untuk tanggal {viewDate}.
             </p>
           </div>
           {isAkunUtama && (
@@ -917,7 +981,7 @@ export default function BASTView({
             </button>
           )}
         </div>
-      ) : filteredDocs.length === 0 ? (
+      ) : filteredDocsByDate.length === 0 ? (
         <div className="p-16 text-center text-xs text-neutral-400 space-y-2 bg-white rounded-3xl border border-neutral-100 shadow-2xs">
           <ShieldAlert className="h-10 w-10 text-neutral-300 mx-auto" />
           <p className="font-bold text-neutral-600 text-sm">Tidak Ada Arsip BAST yang Cocok</p>
@@ -942,7 +1006,7 @@ export default function BASTView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 text-neutral-700">
-                {filteredDocs.map((doc) => {
+                {filteredDocsByDate.map((doc) => {
                   const hasDriverSig = !!doc.bastSignatureDriver;
                   const hasReceiverSig = !!doc.bastSignatureReceiver;
                   const isDone = doc.status === 'Selesai';
@@ -1021,7 +1085,7 @@ export default function BASTView({
       ) : (
         /* --- HIGH-QUALITY GRID CARDS VIEW --- */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredDocs.map((doc) => {
+          {filteredDocsByDate.map((doc) => {
             const hasDriverSig = !!doc.bastSignatureDriver;
             const hasReceiverSig = !!doc.bastSignatureReceiver;
             const isDone = doc.status === 'Selesai';

@@ -29,6 +29,9 @@ export default function SuratJalanView({
 }: SuratJalanViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeDoc, setActiveDoc] = useState<any | null>(null);
+  const [activeDateView, setActiveDateView] = useState<string | null>(null);
+  const viewDate = activeDateView || selectedDate;
+  const localSelectedDate = viewDate;
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -61,7 +64,7 @@ export default function SuratJalanView({
   const isAkunUtama = currentUserRole === UserRole.ADMIN || (loggedInUser?.email && ['punkysme@gmail.com', 'ketua@sppg.com'].includes(loggedInUser.email.toLowerCase().trim()));
 
   // Daily list of docs for selected date (for releasing check)
-  const dateDocs = shippingDocs.filter(d => d.type === 'surat_jalan' && d.date === selectedDate);
+  const dateDocs = shippingDocs.filter(d => d.type === 'surat_jalan' && d.date === viewDate);
 
   // Full dataset for filters & rekapitulasi
   const allSjDocs = shippingDocs.filter(d => d.type === 'surat_jalan');
@@ -110,7 +113,7 @@ export default function SuratJalanView({
   // Auto select for Penerima if exists
   useEffect(() => {
     if (restrictedLocation) {
-      const allSuratJalanForDate = shippingDocs.filter(d => d.type === 'surat_jalan' && d.date === selectedDate);
+      const allSuratJalanForDate = shippingDocs.filter(d => d.type === 'surat_jalan' && d.date === viewDate);
       if (allSuratJalanForDate.length > 0 && !activeDoc) {
         const matched = allSuratJalanForDate.find(d => d.sjKepada === restrictedLocation);
         if (matched) {
@@ -163,7 +166,8 @@ export default function SuratJalanView({
 
   // Auto initialize Surat Jalan for 6 locations
   const handleInitializeSuratJalan = async () => {
-    const existing = shippingDocs.filter(d => d.type === 'surat_jalan' && d.date === selectedDate);
+    const initDate = activeDateView || selectedDate;
+    const existing = shippingDocs.filter(d => d.type === 'surat_jalan' && d.date === initDate);
     if (existing.length > 0) {
       setErrorMsg('Berkas Surat Jalan untuk tanggal ini sudah diinisialisasi dan tidak dapat dibuat lagi.');
       setTimeout(() => setErrorMsg(null), 4000);
@@ -183,12 +187,12 @@ export default function SuratJalanView({
         const { data, error } = await supabase
           .from('master_porsi')
           .select('portions')
-          .eq('date', selectedDate)
+          .eq('date', initDate)
           .maybeSingle();
         
         if (error) {
           console.warn("Could not load portions from Supabase for Surat Jalan, trying local cache:", error);
-          const saved = localStorage.getItem(`sppg_portions_${selectedDate}`);
+          const saved = localStorage.getItem(`sppg_portions_${initDate}`);
           if (saved) {
             portions = JSON.parse(saved);
           } else {
@@ -208,7 +212,7 @@ export default function SuratJalanView({
           if (tplData && tplData.portions) {
             portions = tplData.portions as PortionConfig;
           } else {
-            const saved = localStorage.getItem(`sppg_portions_${selectedDate}`);
+            const saved = localStorage.getItem(`sppg_portions_${initDate}`);
             if (saved) {
               portions = JSON.parse(saved);
             } else {
@@ -218,7 +222,7 @@ export default function SuratJalanView({
           }
         }
       } else {
-        const saved = localStorage.getItem(`sppg_portions_${selectedDate}`);
+        const saved = localStorage.getItem(`sppg_portions_${initDate}`);
         if (saved) {
           portions = JSON.parse(saved);
         } else {
@@ -911,18 +915,78 @@ export default function SuratJalanView({
     );
   }
 
+  // Grid of Date Cards View
+  if (!activeDateView) {
+    // Collect all dates from menus
+    const dates = [...allDayMenus].sort((a,b) => a.date.localeCompare(b.date));
+    
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h2 className="text-xl font-extrabold font-sans text-neutral-900 flex items-center gap-2 tracking-tight">
+              <Truck className="h-6 w-6 text-emerald-800 shrink-0" />
+              Arsip Surat Jalan Harian
+            </h2>
+            <p className="text-xs text-neutral-500 font-mono">
+              Silakan pilih tanggal untuk melihat atau menginisiasi Surat Jalan.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          {dates.map(mn => {
+            const sjForDate = allSjDocs.filter(d => d.date === mn.date);
+            const totalSj = sjForDate.length;
+            const signedSj = sjForDate.filter(d => d.sjSignatureAslap && d.sjSignatureReceiver).length;
+            const hasSj = totalSj > 0;
+            
+            return (
+              <div 
+                key={mn.date}
+                onClick={() => setActiveDateView(mn.date)}
+                className="bg-white border border-neutral-200 hover:border-emerald-600 rounded-2xl p-5 shadow-3xs cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group flex flex-col justify-between"
+              >
+                <div>
+                  <span className="text-[10px] text-neutral-400 font-mono block uppercase tracking-wider mb-1">
+                    TANGGAL DISTRIBUSI
+                  </span>
+                  <h4 className="font-bold text-sm text-neutral-850 group-hover:text-emerald-800 transition-colors">
+                    {mn.date}
+                  </h4>
+                  <p className="text-[10px] text-neutral-500 mt-2">
+                    {hasSj ? `${signedSj} dari ${totalSj} Surat Jalan TTD Lengkap` : 'Surat Jalan Belum Diinisiasi'}
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-neutral-100 flex justify-end">
+                  <span className="text-[10px] font-bold flex items-center gap-1 text-emerald-700">
+                    Buka Detail <ChevronRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   // Dashboard / List View
-  const totalSJ = filteredDocs.length;
-  const completedSJ = filteredDocs.filter(d => d.status === 'Selesai').length;
-  const activeSJ = filteredDocs.filter(d => d.status === 'Aktif').length;
-  
+  const filteredDocsByDate = filteredDocs.filter(d => d.date === viewDate);
+  const totalSJ = filteredDocsByDate.length;
+  const completedSJ = filteredDocsByDate.filter(d => d.status === 'Selesai').length;
+  const activeSJ = filteredDocsByDate.filter(d => d.status === 'Aktif').length;
+
   let totalSigsNeeded = totalSJ * 2;
   let filledSigs = 0;
-  filteredDocs.forEach(d => {
+  filteredDocsByDate.forEach(d => {
     if (d.sjSignatureAslap) filledSigs++;
     if (d.sjSignatureReceiver) filledSigs++;
   });
   const complianceScore = totalSigsNeeded > 0 ? Math.round((filledSigs / totalSigsNeeded) * 100) : 100;
+  
+  // Override selectedDate behavior for internal components
+
 
   return (
     <div className="space-y-6 animate-fade-in" id="sj-dashboard">
@@ -931,9 +995,16 @@ export default function SuratJalanView({
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveDateView(null)}
+              className="mr-2 p-1.5 bg-white border border-neutral-200 text-neutral-500 hover:text-neutral-900 rounded-lg transition-colors shadow-2xs cursor-pointer"
+              title="Kembali ke Daftar Tanggal"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
             <h2 className="text-xl font-extrabold font-sans text-neutral-900 flex items-center gap-2 tracking-tight">
               <Truck className="h-6 w-6 text-emerald-800 shrink-0" />
-              Arsip &amp; Rekapitulasi Surat Jalan Logistik
+              Detail Surat Jalan: {viewDate}
             </h2>
             <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full">
               SOP-Aligned
@@ -1063,12 +1134,12 @@ export default function SuratJalanView({
               onChange={e => setFilterDate(e.target.value as any)}
               className="border border-neutral-200 bg-neutral-50/50 rounded-xl px-3 py-1.5 text-xs outline-hidden focus:bg-white focus:ring-1 focus:ring-emerald-700"
             >
-              <option value="selected">Tanggal Terpilih ({selectedDate})</option>
+              <option value="selected">Tanggal Terpilih ({viewDate})</option>
               <option value="all">Semua Tanggal (Arsip Historis)</option>
             </select>
           ) : (
             <div className="bg-neutral-50 border border-neutral-100 rounded-xl px-3 py-1.5 text-xs text-neutral-500 font-mono font-bold flex items-center justify-center">
-              📅 Hari Ini: {selectedDate}
+              📅 Hari Ini: {viewDate}
             </div>
           )}
         </div>
@@ -1081,7 +1152,7 @@ export default function SuratJalanView({
           <div className="space-y-1.5">
             <h4 className="text-neutral-700 font-bold text-sm">Surat Jalan Belum Dirilis</h4>
             <p className="text-xs text-neutral-400 max-w-sm mx-auto">
-              Berkas digital Surat Jalan pengiriman logistik untuk 6 lokasi sasaran belum diinisialisasi untuk tanggal {selectedDate}.
+              Berkas digital Surat Jalan pengiriman logistik untuk 6 lokasi sasaran belum diinisialisasi untuk tanggal {viewDate}.
             </p>
           </div>
           {isAkunUtama && (
@@ -1094,7 +1165,7 @@ export default function SuratJalanView({
             </button>
           )}
         </div>
-      ) : filteredDocs.length === 0 ? (
+      ) : filteredDocsByDate.length === 0 ? (
         <div className="p-16 text-center text-xs text-neutral-400 space-y-2 bg-white rounded-3xl border border-neutral-100 shadow-2xs">
           <ShieldAlert className="h-10 w-10 text-neutral-300 mx-auto" />
           <p className="font-bold text-neutral-600 text-sm">Tidak Ada Arsip Surat Jalan yang Cocok</p>
@@ -1119,7 +1190,7 @@ export default function SuratJalanView({
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 text-neutral-700">
-                {filteredDocs.map((doc) => {
+                {filteredDocsByDate.map((doc) => {
                   const hasAslapSig = !!doc.sjSignatureAslap;
                   const hasReceiverSig = !!doc.sjSignatureReceiver;
                   const isDone = doc.status === 'Selesai';
@@ -1196,7 +1267,7 @@ export default function SuratJalanView({
       ) : (
         /* --- HIGH-QUALITY GRID CARDS VIEW --- */
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredDocs.map((doc) => {
+          {filteredDocsByDate.map((doc) => {
             const hasAslapSig = !!doc.sjSignatureAslap;
             const hasReceiverSig = !!doc.sjSignatureReceiver;
             const isDone = doc.status === 'Selesai';

@@ -73,7 +73,7 @@ export function useSopData(selectedDate: string) {
         const { data: mData, error: menuErr } = await supabase
           .from('day_menus')
           .select('*')
-          .eq('date', targetDate)
+          
           .order('date', { ascending: true });
         if (!menuErr) menuData = mData;
       } catch (mE) {
@@ -84,7 +84,7 @@ export function useSopData(selectedDate: string) {
         const { data: sData, error: sopErr } = await supabase
           .from('sops')
           .select('*')
-          .eq('date', targetDate)
+          
           .order('date', { ascending: true });
         if (!sopErr) sopData = sData;
       } catch (sE) {

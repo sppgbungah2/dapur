@@ -18,6 +18,17 @@ import { useRouting } from './hooks/useRouting';
 import { useSopData } from './hooks/useSopData';
 
 export default function App() {
+  // Clear deprecated local cache
+  useEffect(() => {
+    try {
+      const keys = Object.keys(localStorage);
+      for (const k of keys) {
+        if (k.startsWith('sppg_portions_')) {
+          localStorage.removeItem(k);
+        }
+      }
+    } catch (e) {}
+  }, []);
   // User Authentication State
   const [loggedInUser, setLoggedInUser] = useState<UserProfile | null>(null);
 
@@ -50,7 +61,7 @@ export default function App() {
   const [currentUsername, setCurrentUsername] = useState<string>('Sistem Administrator');
   
   // Inner SOP Sub-Tab selection
-  const [currentSubTab, setCurrentSubTab] = useState<'dashboard' | 'create' | 'recap'>('dashboard');
+  const [currentSubTab, setCurrentSubTab] = useState<'date-grid' | 'dashboard' | 'create' | 'recap'>('date-grid');
   
   // Mobile navigation drawer toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -743,6 +754,19 @@ export default function App() {
     );
   }
 
+  // Calculate SOP Aggregated Metrics
+  const totalSOPs = sops.length;
+  const completedSOPs = sops.filter(s => s.status === 'selesai').length;
+  const activeSOPs = sops.filter(s => s.status === 'aktif').length;
+  
+  let totalTasks = 0;
+  let finishedTasks = 0;
+  sops.forEach(s => {
+    totalTasks += s.tasks.length;
+    finishedTasks += s.tasks.filter(t => t.completed).length;
+  });
+  const complianceRate = totalTasks > 0 ? Math.round((finishedTasks / totalTasks) * 100) : 100;
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-neutral-800">
       
@@ -1001,6 +1025,16 @@ export default function App() {
                 {/* Sub Tab selection buttons */}
                 <div className="flex border border-neutral-200 bg-neutral-50 p-1 rounded-xl shrink-0 tab-buttons no-print flex-wrap gap-1 sm:gap-0">
                   <button
+                    onClick={() => setCurrentSubTab('date-grid')}
+                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      currentSubTab === 'date-grid'
+                        ? 'bg-emerald-800 text-white shadow-2xs'
+                        : 'text-neutral-500 hover:text-neutral-800'
+                    }`}
+                  >
+                    Kalender SOP
+                  </button>
+                  <button
                     onClick={() => setCurrentSubTab('dashboard')}
                     className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       currentSubTab === 'dashboard'
@@ -1010,31 +1044,96 @@ export default function App() {
                   >
                     Dashboard SOP
                   </button>
-                  <button
-                    onClick={() => setCurrentSubTab('create')}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      currentSubTab === 'create'
-                        ? 'bg-emerald-800 text-white shadow-2xs'
-                        : 'text-neutral-500 hover:text-neutral-800'
-                    }`}
-                  >
-                    Rilis / Atur Menu
-                  </button>
-                  <button
-                    onClick={() => setCurrentSubTab('recap')}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      currentSubTab === 'recap'
-                        ? 'bg-emerald-800 text-white shadow-2xs'
-                        : 'text-neutral-500 hover:text-neutral-800'
-                    }`}
-                  >
-                    Bank Rekapitulasi
-                  </button>
                 </div>
               </div>
-
               {/* Render Selected SubTab */}
-              {currentSubTab === 'create' ? (
+              {currentSubTab === 'date-grid' ? (
+                <div className="space-y-6 animate-fade-in">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <h2 className="text-xl font-extrabold font-sans text-neutral-900 flex items-center gap-2 tracking-tight">
+                        <Calendar className="h-6 w-6 text-emerald-800 shrink-0" />
+                        Pilih Tanggal SOP Harian
+                      </h2>
+                      <p className="text-xs text-neutral-500 font-mono">
+                        Silakan pilih tanggal untuk mengelola dan mengisi checklist SOP Dapur.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Aggregated Performance Scorecard Tiles */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-white p-5 rounded-2xl border border-neutral-100 shadow-xs flex flex-col justify-between">
+                      <span className="text-neutral-400 font-medium text-xs block uppercase tracking-wider">Total Form SOP</span>
+                      <div className="mt-2 flex items-baseline gap-1">
+                        <span className="text-2xl font-bold text-neutral-800">{totalSOPs}</span>
+                        <span className="text-[10px] text-neutral-400 font-mono">Berkas</span>
+                      </div>
+                    </div>
+                    
+                    <div className="bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100/50 flex flex-col justify-between">
+                      <span className="text-emerald-800/80 font-semibold text-xs block uppercase tracking-wider">SOP Terkunci</span>
+                      <div className="mt-2 flex items-baseline gap-1">
+                        <span className="text-2xl font-bold text-emerald-800">{completedSOPs}</span>
+                        <span className="text-[10px] text-emerald-500 font-mono font-bold">Kunci</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-amber-50/50 p-5 rounded-2xl border border-amber-100/50 flex flex-col justify-between">
+                      <span className="text-amber-800/80 font-semibold text-xs block uppercase tracking-wider">Sedang Berjalan</span>
+                      <div className="mt-2 flex items-baseline gap-1">
+                        <span className="text-2xl font-bold text-amber-700">{activeSOPs}</span>
+                        <span className="text-[10px] text-amber-500 font-mono font-bold">Eksis</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100/50 flex flex-col justify-between">
+                      <span className="text-indigo-800/80 font-semibold text-xs block uppercase tracking-wider">Skor Kepatuhan</span>
+                      <div className="mt-2 flex items-baseline gap-1">
+                        <span className="text-2xl font-bold text-indigo-800">{complianceRate}%</span>
+                        <span className="text-[10px] text-indigo-500 font-mono font-bold">Tasks</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    {[...dayMenus].sort((a,b) => a.date.localeCompare(b.date)).map(mn => {
+                      const sopsForDate = sops.filter(s => s.date === mn.date);
+                      const totalSops = sopsForDate.length;
+                      const completedSops = sopsForDate.filter(s => s.status === 'selesai').length;
+                      const hasSops = totalSops > 0;
+                      
+                      return (
+                        <div 
+                          key={mn.date}
+                          onClick={() => {
+                            setSelectedDate(mn.date);
+                            setCurrentSubTab('dashboard');
+                          }}
+                          className="bg-white border border-neutral-200 hover:border-emerald-600 rounded-2xl p-5 shadow-3xs cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group flex flex-col justify-between"
+                        >
+                          <div>
+                            <span className="text-[10px] text-neutral-400 font-mono block uppercase tracking-wider mb-1">
+                              TANGGAL SOP
+                            </span>
+                            <h4 className="font-bold text-sm text-neutral-850 group-hover:text-emerald-800 transition-colors">
+                              {mn.date}
+                            </h4>
+                            <p className="text-[10px] text-neutral-500 mt-2">
+                              {hasSops ? `${completedSops} dari ${totalSops} SOP Terkunci` : 'SOP Belum Diinisiasi'}
+                            </p>
+                          </div>
+                          <div className="mt-4 pt-3 border-t border-neutral-100 flex justify-end">
+                            <span className="text-[10px] font-bold flex items-center gap-1 text-emerald-700">
+                              Buka Checklist <ChevronRight className="h-3 w-3" />
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : currentSubTab === 'create' ? (
                 <SOPCreator
                   selectedDate={selectedDate}
                   dayMenu={getMenuForSelectedDate()}

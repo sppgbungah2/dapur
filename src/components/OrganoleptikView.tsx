@@ -26,6 +26,9 @@ export default function OrganoleptikView({
   allDayMenus = []
 }: OrganoleptikViewProps) {
   const [activeDoc, setActiveDoc] = useState<any | null>(null);
+  const [activeDateView, setActiveDateView] = useState<string | null>(null);
+  const viewDate = activeDateView || selectedDate;
+  const localSelectedDate = viewDate;
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -42,7 +45,7 @@ export default function OrganoleptikView({
   } | null>(null);
 
   // Filter Organoleptik docs for the selected date
-  const dateDocs = shippingDocs.filter(d => d.type === 'organoleptik' && d.date === selectedDate);
+  const dateDocs = shippingDocs.filter(d => d.type === 'organoleptik' && d.date === viewDate);
 
   const getPenerimaLocation = (email: string): string => {
     const e = email.toLowerCase().trim();
@@ -71,7 +74,7 @@ export default function OrganoleptikView({
   // Auto select for Penerima if exists
   useEffect(() => {
     if (restrictedLocation) {
-      const allOrlepForDate = shippingDocs.filter(d => d.type === 'organoleptik' && d.date === selectedDate);
+      const allOrlepForDate = shippingDocs.filter(d => d.type === 'organoleptik' && d.date === viewDate);
       if (allOrlepForDate.length > 0 && !activeDoc) {
         const matchingDoc = allOrlepForDate.find(d => d.orlepDesa === restrictedLocation);
         if (matchingDoc) {
@@ -114,7 +117,8 @@ export default function OrganoleptikView({
 
   // Auto initialize Organoleptik for today - Creates 6 documents for each recipient
   const handleInitializeOrganoleptik = () => {
-    const existing = shippingDocs.filter(d => d.type === 'organoleptik' && d.date === selectedDate);
+    const initDate = viewDate;
+    const existing = shippingDocs.filter(d => d.type === 'organoleptik' && d.date === initDate);
     if (existing.length > 0) {
       setErrorMsg('Berkas Uji Organoleptik untuk tanggal ini sudah diinisialisasi dan tidak dapat dibuat lagi.');
       setTimeout(() => setErrorMsg(null), 4000);
@@ -127,7 +131,7 @@ export default function OrganoleptikView({
       return;
     }
 
-    const currentDayMenu = allDayMenus.find(m => m.date === selectedDate);
+    const currentDayMenu = allDayMenus.find(m => m.date === viewDate);
     const menuStr = currentDayMenu ? currentDayMenu.menuList.join(', ') : 'Nasi Krawu Bungah, Ayam Goreng Lengkuas, Tempe Bacem, Melon Segar';
     
     const RECIPIENTS_LIST = [
@@ -168,7 +172,7 @@ export default function OrganoleptikView({
 
     // Reinitialize clears old ones for that day
     setShippingDocs(prev => {
-      const filteredPrev = prev.filter(d => !(d.type === 'organoleptik' && d.date === selectedDate));
+      const filteredPrev = prev.filter(d => !(d.type === 'organoleptik' && d.date === viewDate));
       return [...newDocs, ...filteredPrev];
     });
 
@@ -225,7 +229,7 @@ export default function OrganoleptikView({
   const dateText = getIndonesianDateText(selectedDate);
 
   // Find daily menu to map dish names dynamically to Organoleptik items
-  const currentDayMenuForOrlep = allDayMenus.find(m => m.date === selectedDate);
+  const currentDayMenuForOrlep = allDayMenus.find(m => m.date === viewDate);
   const menuListForOrlep = currentDayMenuForOrlep?.menuList || [];
 
   // Components to be rated, mapping each to the corresponding daily menu item
@@ -772,14 +776,81 @@ export default function OrganoleptikView({
   ];
 
   // Dashboard / List View
+  const filteredDocsByDate = filteredDocs.filter(d => d.date === viewDate);
+  // Grid of Date Cards View
+  if (!activeDateView) {
+    const dates = [...(allDayMenus || [])].sort((a,b) => a.date.localeCompare(b.date));
+    
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold font-sans text-neutral-800 flex items-center gap-2">
+                <CheckCircle className="h-6 w-6 text-emerald-700 shrink-0" />
+                Arsip Lembar Pengujian Organoleptik
+              </h2>
+              <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full">
+                SOP-Aligned
+              </span>
+            </div>
+            <p className="text-sm text-neutral-500">Lembar kendali kualitas rasa, kematangan tekstur makanan, serta kepatuhan thermal suhu kritis CCP hidangan dapur sebelum didistribusikan.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          {dates.map(mn => {
+            const docsForDate = shippingDocs.filter(d => d.type === 'organoleptik').filter(d => d.date === mn.date);
+            const totalDocs = docsForDate.length;
+            const signedDocs = docsForDate.filter(d => d.orlepSignature).length;
+            const hasDocs = totalDocs > 0;
+            
+            return (
+              <div 
+                key={mn.date}
+                onClick={() => setActiveDateView(mn.date)}
+                className="bg-white border border-neutral-200 hover:border-emerald-600 rounded-2xl p-5 shadow-3xs cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group flex flex-col justify-between"
+              >
+                <div>
+                  <span className="text-[10px] text-neutral-400 font-mono block uppercase tracking-wider mb-1">
+                    TANGGAL UJI
+                  </span>
+                  <h4 className="font-bold text-sm text-neutral-850 group-hover:text-emerald-800 transition-colors">
+                    {mn.date}
+                  </h4>
+                  <p className="text-[10px] text-neutral-500 mt-2">
+                    {hasDocs ? `${signedDocs} dari ${totalDocs} Form TTD Lengkap` : 'Organoleptik Belum Diinisiasi'}
+                  </p>
+                </div>
+                <div className="mt-4 pt-3 border-t border-neutral-100 flex justify-end">
+                  <span className="text-[10px] font-bold flex items-center gap-1 text-emerald-700">
+                    Buka Detail <ChevronRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+
   return (
     <div className="space-y-6 animate-fade-in" id="orlep-dashboard">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveDateView(null)}
+              className="mr-2 p-1.5 bg-white border border-neutral-200 text-neutral-500 hover:text-neutral-900 rounded-lg transition-colors shadow-2xs cursor-pointer"
+              title="Kembali ke Daftar Tanggal"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
             <h2 className="text-xl font-bold font-sans text-neutral-800 flex items-center gap-2">
               <CheckCircle className="h-6 w-6 text-emerald-700 shrink-0" />
-              Arsip Lembar Pengujian Organoleptik
+              Detail Organoleptik: {viewDate}
             </h2>
             <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-200 uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full">
               SOP-Aligned
@@ -803,7 +874,7 @@ export default function OrganoleptikView({
           <div className="space-y-1.5">
             <h4 className="text-neutral-700 font-bold text-sm">Lembar Uji Organoleptik Belum Dirilis</h4>
             <p className="text-xs text-neutral-400 max-w-sm mx-auto">
-              Lembar pengujian kelayakan rasa & thermal CCP belum diinisialisasi untuk tanggal {selectedDate}.
+              Lembar pengujian kelayakan rasa & thermal CCP belum diinisialisasi untuk tanggal {viewDate}.
             </p>
           </div>
           {isAkunUtama && (
@@ -840,7 +911,7 @@ export default function OrganoleptikView({
                     }
                     if (confirm(`Apakah Anda yakin ingin mengunci ${activeSigned.length} berkas yang sudah bertandatangan secara masal? Berkas tanpa tanda tangan (${activeUnsigned.length}) akan dilewati.`)) {
                       setShippingDocs(prev => prev.map(d => {
-                        if (d.type === 'organoleptik' && d.date === selectedDate && d.status === 'Aktif' && d.orlepSignature) {
+                        if (d.type === 'organoleptik' && d.date === viewDate && d.status === 'Aktif' && d.orlepSignature) {
                           return { ...d, status: 'Selesai' };
                         }
                         return d;
@@ -985,20 +1056,20 @@ export default function OrganoleptikView({
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-neutral-800 text-xs uppercase tracking-wider">
-                Lembar Pengujian Terfilter ({filteredDocs.length} Berkas)
+                Lembar Pengujian Terfilter ({filteredDocsByDate.length} Berkas)
               </h3>
-              {filteredDocs.length < dateDocs.length && (
-                <span className="text-[10px] text-neutral-400 italic">Menampilkan {filteredDocs.length} dari total {dateDocs.length} berkas hari ini</span>
+              {filteredDocsByDate.length < dateDocs.length && (
+                <span className="text-[10px] text-neutral-400 italic">Menampilkan {filteredDocsByDate.length} dari total {dateDocs.length} berkas hari ini</span>
               )}
             </div>
 
-            {filteredDocs.length === 0 ? (
+            {filteredDocsByDate.length === 0 ? (
               <div className="p-12 border border-dashed border-neutral-200 rounded-2xl bg-white text-center text-neutral-400 text-xs">
                 Tidak ada lembar pengujian yang cocok dengan kriteria filter aktif.
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredDocs.map((doc) => {
+                {filteredDocsByDate.map((doc) => {
                   const hasSig = !!doc.orlepSignature;
                   const isDone = doc.status === 'Selesai';
                   

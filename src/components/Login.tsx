@@ -151,7 +151,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       if (customErr.includes('Invalid login credentials')) {
         customErr = 'Email atau kata sandi salah. Silakan coba kembali.';
       } else if (customErr.includes('Failed to fetch')) {
-        customErr = 'Gagal terhubung ke database (Failed to fetch). Hapus Custom Supabase URL & Key di Pengaturan (⚙️) jika sudah tidak valid.';
+        customErr = 'Gagal terhubung ke Supabase (Failed to fetch). Pastikan URL menggunakan HTTPS, instance aktif, dan CORS mengizinkan URL aplikasi ini.';
       }
       setErrorMsg(customErr);
       setLoading(false);

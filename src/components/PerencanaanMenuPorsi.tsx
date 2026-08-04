@@ -13,6 +13,7 @@ interface Props {
   setShippingDocs: React.Dispatch<React.SetStateAction<any[]>>;
   allDayMenus: DayMenu[];
   onSaveMenu: (date: string, menuList: string[]) => void;
+  onSavePortions?: (portions: PortionConfig) => void;
 }
 
 export default function PerencanaanMenuPorsi({
@@ -22,7 +23,8 @@ export default function PerencanaanMenuPorsi({
   shippingDocs,
   setShippingDocs,
   allDayMenus,
-  onSaveMenu
+  onSaveMenu,
+  onSavePortions
 }: Props) {
   const [menuText, setMenuText] = useState('');
   const [portions, setPortions] = useState<PortionConfig>({ ...DEFAULT_PORTIONS });
@@ -35,13 +37,9 @@ export default function PerencanaanMenuPorsi({
   const [initBASTStatus, setInitBASTStatus] = useState<'idle'|'loading'|'success'>('idle');
   const [initOrlepStatus, setInitOrlepStatus] = useState<'idle'|'loading'|'success'>('idle');
 
-  // Load existing data
+  // Load Menu and Portions
   useEffect(() => {
     setIsSaved(false);
-    setInitSOPStatus('idle');
-    setInitSJStatus('idle');
-    setInitBASTStatus('idle');
-    setInitOrlepStatus('idle');
 
     // Load Menu
     const currentDayMenu = allDayMenus.find(m => m.date === selectedDate);
@@ -52,7 +50,7 @@ export default function PerencanaanMenuPorsi({
       setMenuText('Nasi Putih, Lauk Utama, Sayur, Buah');
     }
 
-    // Load Portions from DB or local
+    // Load Portions from DB
     const loadPortions = async () => {
       try {
         if (isSupabaseConfigured && supabase) {
@@ -65,17 +63,18 @@ export default function PerencanaanMenuPorsi({
       } catch (err) {
         console.warn('Failed to load portions from Supabase:', err);
       }
-      
-      const saved = localStorage.getItem(`sppg_portions_${selectedDate}`);
-      if (saved) {
-        setPortions(JSON.parse(saved));
-      } else {
-        setPortions({ ...DEFAULT_PORTIONS });
-      }
+      setPortions({ ...DEFAULT_PORTIONS });
     };
     loadPortions();
-    
-    // Check if docs already exist
+  }, [selectedDate]); // ONLY depend on selectedDate so it doesn't revert while typing!
+
+  // Check if docs already exist
+  useEffect(() => {
+    setInitSOPStatus('idle');
+    setInitSJStatus('idle');
+    setInitBASTStatus('idle');
+    setInitOrlepStatus('idle');
+
     const hasSj = shippingDocs.some(d => d.type === 'surat_jalan' && d.date === selectedDate);
     if (hasSj) setInitSJStatus('success');
     
@@ -84,8 +83,7 @@ export default function PerencanaanMenuPorsi({
     
     const hasOrlep = shippingDocs.some(d => d.type === 'organoleptik' && d.date === selectedDate);
     if (hasOrlep) setInitOrlepStatus('success');
-
-  }, [selectedDate, allDayMenus, shippingDocs]);
+  }, [selectedDate, shippingDocs]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -95,7 +93,6 @@ export default function PerencanaanMenuPorsi({
     onSaveMenu(selectedDate, menuArr);
 
     // 2. Save Portions
-    localStorage.setItem(`sppg_portions_${selectedDate}`, JSON.stringify(portions));
     if (isSupabaseConfigured && supabase) {
       try {
         await supabase.from('master_porsi').upsert({
@@ -111,6 +108,9 @@ export default function PerencanaanMenuPorsi({
 
     setIsSaving(false);
     setIsSaved(true);
+    if (onSavePortions) {
+      onSavePortions(portions);
+    }
     onSuccess('Berhasil menyimpan Rencana Menu & PM ke Database!');
   };
 
@@ -134,11 +134,12 @@ export default function PerencanaanMenuPorsi({
     const menuArr = menuText.split(',').map(m => m.trim()).filter(m => m !== '');
     const menuStr = menuArr.join(', ');
 
-    // Call generateInitialDocsAsync but filter the creation inside or just generate all and update state
-    // Actually, generateInitialDocsAsync creates all missing docs. We can just call it and it will only create what's missing if we filter, 
-    // OR we can just let it create all, but if we want to isolate, we can just call the helper for all.
-    // To make it distinct, we can just call generateInitialDocsAsync.
-    const updatedDocs = await generateInitialDocsAsync(selectedDate, shippingDocs, menuStr, 'admin@sppg.com');
+    let targetType: 'surat_jalan' | 'serah_terima' | 'organoleptik' | undefined;
+    if (type === 'SJ') targetType = 'surat_jalan';
+    if (type === 'BAST') targetType = 'serah_terima';
+    if (type === 'ORLEP') targetType = 'organoleptik';
+
+    const updatedDocs = await generateInitialDocsAsync(selectedDate, shippingDocs, menuStr, 'admin@sppg.com', targetType);
     setShippingDocs(updatedDocs);
     
     // Sync to DB explicitly for safety
@@ -166,12 +167,24 @@ export default function PerencanaanMenuPorsi({
     }));
   };
 
+  const totalPM = ((portions.MA?.siswa || 0) + (portions.MA?.guru || 0)) +
+                  ((portions["MTS II"]?.siswa || 0) + (portions["MTS II"]?.guru || 0)) +
+                  ((portions.SMK?.siswa || 0) + (portions.SMK?.guru || 0)) +
+                  ((portions.SMA?.siswa || 0) + (portions.SMA?.guru || 0)) +
+                  ((portions.Sukowati?.besar || 0) + (portions.Sukowati?.kecil || 0)) +
+                  ((portions.Sidokumpul?.besar || 0) + (portions.Sidokumpul?.kecil || 0));
+
   return (
     <div className="bg-white rounded-3xl p-6 border border-neutral-200 shadow-sm mb-8">
-      <h2 className="text-lg font-bold text-neutral-800 mb-4 flex items-center gap-2">
-        <FileText className="w-5 h-5 text-emerald-600" />
-        Langkah 1: Perencanaan Menu & PM (Penerima Manfaat)
-      </h2>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+        <h2 className="text-lg font-bold text-neutral-800 flex items-center gap-2">
+          <FileText className="w-5 h-5 text-emerald-600" />
+          Langkah 1: Perencanaan Menu & PM (Penerima Manfaat)
+        </h2>
+        <span className="bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full text-xs">
+          Total: {totalPM} PM
+        </span>
+      </div>
       
       <div className="space-y-4">
         <div>
