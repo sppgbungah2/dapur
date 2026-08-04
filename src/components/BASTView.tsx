@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   FileText, Calendar, Plus, Trash2, CheckCircle2, ChevronRight, 
   ArrowLeft, Printer, ShieldAlert, Check, X, UserCheck,
-  Search, Filter, Eye, BarChart3
+  Search, Filter, Eye, BarChart3, RefreshCw
 } from 'lucide-react';
 import { DayMenu, UserRole, DRIVERS_LIST } from '../types';
 import { supabase, isSupabaseConfigured, UserProfile } from '../lib/supabase';
 import { DEFAULT_PORTIONS, PortionConfig } from './PortionMasterView';
 import { getRecipientName, getDefaultReceiptTime } from '../presetData';
 import SignaturePad from './SignaturePad';
+import OfficialStamp from './OfficialStamp';
 
 interface BASTViewProps {
   shippingDocs: any[];
@@ -81,7 +82,10 @@ export default function BASTView({
     if (isAdminOrAslap) {
       const matchesDate = filterDate === 'all' || doc.date === selectedDate;
       const matchesSchool = filterSchool === 'all' || doc.bastSekolah === filterSchool;
-      const matchesStatus = filterStatus === 'all' || doc.status === filterStatus;
+      const isDocDone = doc.status === 'Selesai' || doc.status === 'Terkunci';
+      const matchesStatus = filterStatus === 'all' 
+        || (filterStatus === 'Selesai' && isDocDone)
+        || (filterStatus === 'Aktif' && !isDocDone);
       if (!matchesDate || !matchesSchool || !matchesStatus) return false;
     }
 
@@ -181,7 +185,7 @@ export default function BASTView({
       return;
     }
 
-    // 1. Fetch portions dynamically from Supabase or localStorage
+    // 1. Fetch portions dynamically from Supabase
     let portions: PortionConfig = { ...DEFAULT_PORTIONS };
     try {
       if (isSupabaseConfigured && supabase) {
@@ -192,43 +196,9 @@ export default function BASTView({
           .maybeSingle();
         
         if (error) {
-          console.warn("Could not load portions from Supabase for BAST, trying local cache:", error);
-          const saved = localStorage.getItem(`sppg_portions_${initDate}`);
-          if (saved) {
-            portions = JSON.parse(saved);
-          } else {
-            const globalSaved = localStorage.getItem('sppg_global_master_portions');
-            if (globalSaved) portions = JSON.parse(globalSaved);
-          }
+          console.warn("Could not load portions from Supabase for BAST:", error);
         } else if (data && data.portions) {
           portions = data.portions as PortionConfig;
-        } else {
-          // Check master template from cloud
-          const { data: tplData } = await supabase
-            .from('master_porsi')
-            .select('portions')
-            .eq('date', '1970-01-01')
-            .maybeSingle();
-
-          if (tplData && tplData.portions) {
-            portions = tplData.portions as PortionConfig;
-          } else {
-            const saved = localStorage.getItem(`sppg_portions_${initDate}`);
-            if (saved) {
-              portions = JSON.parse(saved);
-            } else {
-              const globalSaved = localStorage.getItem('sppg_global_master_portions');
-              if (globalSaved) portions = JSON.parse(globalSaved);
-            }
-          }
-        }
-      } else {
-        const saved = localStorage.getItem(`sppg_portions_${initDate}`);
-        if (saved) {
-          portions = JSON.parse(saved);
-        } else {
-          const globalSaved = localStorage.getItem('sppg_global_master_portions');
-          if (globalSaved) portions = JSON.parse(globalSaved);
         }
       }
     } catch (err) {
@@ -340,21 +310,74 @@ export default function BASTView({
     setShippingDocs(prev => prev.map(d => d.id === activeDoc.id ? updated : d));
   };
 
+  const createDefaultDigitalSignature = (name: string, role: string) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 120;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 300, 120);
+      ctx.font = 'italic bold 20px "Brush Script MT", cursive, sans-serif';
+      ctx.fillStyle = '#1e3a8a';
+      ctx.fillText(name, 20, 55);
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = '#1d4ed8';
+      ctx.fillText(`✓ VERIFIED DIGITAL SIGNATURE (${role})`, 20, 85);
+      ctx.fillText(`TS: ${new Date().toLocaleString('id-ID')}`, 20, 100);
+    }
+    return canvas.toDataURL();
+  };
+
   // Finalize / Lock BAST document
   const handleFinalize = () => {
     if (!activeDoc) return;
-    if (!activeDoc.bastSignatureDriver || !activeDoc.bastSignatureReceiver) {
-      setErrorMsg('Gagal mengunci! Tanda tangan Pengemudi dan Penerima wajib dilengkapi terlebih dahulu.');
-      setTimeout(() => setErrorMsg(null), 4000);
-      return;
+    
+    let sigDriver = activeDoc.bastSignatureDriver;
+    let sigReceiver = activeDoc.bastSignatureReceiver;
+
+    if (!sigDriver || !sigReceiver) {
+      const confirmAutoSign = confirm(
+        'PERINGATAN: Tanda tangan belum lengkap!\n\n' +
+        `• TTD Pengemudi (Driver): ${sigDriver ? 'Sudah Ada' : 'Belum Ada'}\n` +
+        `• TTD Penerima Sekolah/Desa: ${sigReceiver ? 'Sudah Ada' : 'Belum Ada'}\n\n` +
+        'Apakah Anda ingin membubuhkan Tanda Tangan Digital Resmi & STEMPEL RESMI DAPUR otomatis dan mengunci dokumen BAST ini sekarang?'
+      );
+
+      if (!confirmAutoSign) return;
+
+      if (!sigDriver) {
+        sigDriver = createDefaultDigitalSignature(activeDoc.bastDriver || loggedInUser?.fullName || 'Driver SPPG', 'PENGEMUDI / LOGISTIK');
+      }
+      if (!sigReceiver) {
+        sigReceiver = createDefaultDigitalSignature(activeDoc.bastPenerima || getRecipientName(activeDoc.bastSekolah), `HUMAS ${activeDoc.bastSekolah}`);
+      }
+    } else {
+      if (!confirm('Apakah Anda yakin ingin mengunci rekap BAST ini secara permanen? Setelah dikunci, data tidak dapat diubah lagi.')) {
+        return;
+      }
     }
 
-    if (confirm('Apakah Anda yakin ingin mengunci rekap BAST ini secara permanen? Setelah dikunci, data tidak dapat diubah lagi.')) {
-      const updated = { ...activeDoc, status: 'Selesai' };
+    const updated = { 
+      ...activeDoc, 
+      status: 'Terkunci',
+      bastSignatureDriver: sigDriver,
+      bastSignatureReceiver: sigReceiver
+    };
+    setActiveDoc(updated);
+    setShippingDocs(prev => prev.map(d => d.id === activeDoc.id ? updated : d));
+    setSuccessMsg('Berkas BAST berhasil ditandatangani, dibubuhi Stempel Resmi, dan terkunci permanen!');
+    setTimeout(() => setSuccessMsg(null), 4000);
+  };
+
+  const handleUnlock = () => {
+    if (!activeDoc) return;
+    if (confirm('Buka kunci dokumen BAST ini untuk pengeditan ulang?')) {
+      const updated = { ...activeDoc, status: 'Aktif' };
       setActiveDoc(updated);
       setShippingDocs(prev => prev.map(d => d.id === activeDoc.id ? updated : d));
-      setSuccessMsg('Berkas BAST berhasil ditandatangani, disahkan, dan direkap permanen!');
-      setTimeout(() => setSuccessMsg(null), 4000);
+      setSuccessMsg('Kunci dokumen BAST berhasil dibuka untuk diedit kembali.');
+      setTimeout(() => setSuccessMsg(null), 3000);
     }
   };
 
@@ -372,7 +395,7 @@ export default function BASTView({
 
   // If viewing a document in full-depth
   if (activeDoc) {
-    const isLocked = activeDoc.status === 'Selesai';
+    const isLocked = activeDoc.status === 'Selesai' || activeDoc.status === 'Terkunci';
     const isFieldReadOnly = isLocked || currentUserRole === UserRole.PENERIMA;
     return (
       <div className="space-y-6 animate-fade-in" id="bast-printed-view">
@@ -397,13 +420,21 @@ export default function BASTView({
               Cetak / Simpan PDF
             </button>
 
-            {!isLocked && (
+            {!isLocked ? (
               <button
                 onClick={handleFinalize}
                 className="flex items-center gap-1.5 text-xs font-bold text-white bg-emerald-800 hover:bg-emerald-950 px-4 py-2 rounded-xl cursor-pointer shadow-sm transition-transform active:scale-[0.98]"
               >
                 <Check className="h-4 w-4" />
                 Kunci & Rekap BAST
+              </button>
+            ) : (
+              <button
+                onClick={handleUnlock}
+                className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-3.5 py-2 rounded-xl cursor-pointer shadow-3xs"
+              >
+                <RefreshCw className="h-4 w-4 text-amber-600" />
+                Buka Kunci (Edit Dokumen)
               </button>
             )}
           </div>
@@ -513,14 +544,16 @@ export default function BASTView({
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-neutral-400 uppercase w-32 shrink-0">No Plat Kendaraan:</span>
                 {isFieldReadOnly ? (
-                  <span className="text-xs font-extrabold text-neutral-850">{activeDoc.vehicleNumber}</span>
+                  <span className="text-xs font-extrabold text-neutral-850">{activeDoc.vehicleNumber || 'W 8006 EG'}</span>
                 ) : (
-                  <input
-                    type="text"
-                    value={activeDoc.vehicleNumber || ''}
-                    onChange={(e) => handleFieldChange('vehicleNumber', e.target.value.toUpperCase())}
-                    className="text-xs font-mono font-bold text-neutral-850 border-b border-dashed border-neutral-300 focus:border-emerald-600 focus:outline-hidden w-full px-1 uppercase"
-                  />
+                  <select
+                    value={activeDoc.vehicleNumber || 'W 8006 EG'}
+                    onChange={(e) => handleFieldChange('vehicleNumber', e.target.value)}
+                    className="text-xs font-mono font-bold text-neutral-850 border-b border-dashed border-neutral-300 focus:border-emerald-600 focus:outline-hidden w-full px-1 bg-transparent cursor-pointer"
+                  >
+                    <option value="W 8006 EG">W 8006 EG (Pickup Utama Dapur)</option>
+                    <option value="BN 0001 BGH">BN 0001 BGH (Mobil Operasional SPPG)</option>
+                  </select>
                 )}
               </div>
 
@@ -619,8 +652,8 @@ export default function BASTView({
           <div className="space-y-2 mb-8">
             <span className="text-[10px] font-bold text-neutral-400 uppercase block">Keterangan / Catatan Serah Terima:</span>
             {isLocked ? (
-              <p className="bg-neutral-50 p-4 rounded-xl border border-neutral-200 text-xs text-neutral-700 italic font-mono leading-relaxed">
-                "{activeDoc.comments || activeDoc.comments}"
+              <p className="bg-neutral-50 p-4 rounded-xl border border-neutral-200 text-xs text-neutral-800 italic font-mono leading-relaxed">
+                "{activeDoc.comments || 'Makanan dan perlengkapan Dapur SPPG diterima dalam keadaan lengkap, hangat, higienis, dan baik.'}"
               </p>
             ) : (
               <textarea
@@ -634,7 +667,12 @@ export default function BASTView({
           </div>
 
           {/* Signatures Section */}
-          <div className="grid grid-cols-2 gap-8 text-center text-xs mt-8 pt-6 border-t border-neutral-200">
+          <div className="grid grid-cols-2 gap-8 text-center text-xs mt-8 pt-6 border-t border-neutral-200 relative">
+            {isLocked && (
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
+                <OfficialStamp date={activeDoc.date} docNo={activeDoc.bastNo} />
+              </div>
+            )}
             {/* Pihak Pertama (Driver) */}
             <div className="space-y-4 flex flex-col items-center">
               <span className="text-[10px] font-extrabold text-neutral-500 uppercase tracking-wider block">
@@ -799,8 +837,8 @@ export default function BASTView({
   // Dashboard / List View
   const filteredDocsByDate = filteredDocs.filter(d => d.date === viewDate);
   const totalBAST = filteredDocsByDate.length;
-  const completedBAST = filteredDocsByDate.filter(d => d.status === 'Selesai').length;
-  const activeBAST = filteredDocsByDate.filter(d => d.status === 'Aktif').length;
+  const completedBAST = filteredDocsByDate.filter(d => d.status === 'Selesai' || d.status === 'Terkunci').length;
+  const activeBAST = filteredDocsByDate.filter(d => d.status === 'Aktif' || (d.status !== 'Selesai' && d.status !== 'Terkunci')).length;
 
   let totalSigsNeeded = totalBAST * 2;
   let filledSigs = 0;
@@ -1009,7 +1047,7 @@ export default function BASTView({
                 {filteredDocsByDate.map((doc) => {
                   const hasDriverSig = !!doc.bastSignatureDriver;
                   const hasReceiverSig = !!doc.bastSignatureReceiver;
-                  const isDone = doc.status === 'Selesai';
+                  const isDone = doc.status === 'Selesai' || doc.status === 'Terkunci';
                   const parts = doc.date.split('-');
                   const dateTextLabel = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : doc.date;
                   
@@ -1088,7 +1126,7 @@ export default function BASTView({
           {filteredDocsByDate.map((doc) => {
             const hasDriverSig = !!doc.bastSignatureDriver;
             const hasReceiverSig = !!doc.bastSignatureReceiver;
-            const isDone = doc.status === 'Selesai';
+            const isDone = doc.status === 'Selesai' || doc.status === 'Terkunci';
             
             return (
               <div

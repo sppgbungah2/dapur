@@ -7,9 +7,7 @@ import {
 } from 'lucide-react';
 import { Division, UserRole, DayMenu, SOPDocument } from './types';
 import { PRESET_MENUS, DIVISION_CREATOR_MAP, generateInitialSOPsForDate, getDefaultTasksForDivision } from './presetData';
-import SOPCreator from './components/SOPCreator';
 import SOPChecklistView from './components/SOPChecklistView';
-import SOPRecap from './components/SOPRecap';
 import MockModules from './components/MockModules';
 import Login from './components/Login';
 import { isSupabaseConfigured, supabase, mapUserToProfile, UserProfile } from './lib/supabase';
@@ -1103,6 +1101,13 @@ export default function App() {
                       const completedSops = sopsForDate.filter(s => s.status === 'selesai').length;
                       const hasSops = totalSops > 0;
                       
+                      let totalTasks = 0;
+                      let completedTasks = 0;
+                      sopsForDate.forEach(sop => {
+                        totalTasks += sop.tasks.length;
+                        completedTasks += sop.tasks.filter(t => t.is_checked).length;
+                      });
+                      
                       return (
                         <div 
                           key={mn.date}
@@ -1122,6 +1127,11 @@ export default function App() {
                             <p className="text-[10px] text-neutral-500 mt-2">
                               {hasSops ? `${completedSops} dari ${totalSops} SOP Terkunci` : 'SOP Belum Diinisiasi'}
                             </p>
+                            {hasSops && (
+                              <p className="text-[10px] text-indigo-500 mt-1 font-semibold">
+                                {completedTasks} / {totalTasks} Tasks Selesai
+                              </p>
+                            )}
                           </div>
                           <div className="mt-4 pt-3 border-t border-neutral-100 flex justify-end">
                             <span className="text-[10px] font-bold flex items-center gap-1 text-emerald-700">
@@ -1133,29 +1143,6 @@ export default function App() {
                     })}
                   </div>
                 </div>
-              ) : currentSubTab === 'create' ? (
-                <SOPCreator
-                  selectedDate={selectedDate}
-                  dayMenu={getMenuForSelectedDate()}
-                  sopsForDate={getSOPsForSelectedDate()}
-                  currentUserRole={currentUserRole}
-                  currentUsername={currentUsername}
-                  onSaveMenu={handleSaveMenu}
-                  onGenerateSOPs={handleGenerateSOPs}
-                  onUpdateSOP={handleUpdateSOP}
-                  allDayMenus={dayMenus}
-                  onSelectDate={(date) => setSelectedDate(date)}
-                  onDeleteMenu={handleDeleteMenu}
-                  onSetUserRole={setCurrentUserRole}
-                  onBootstrapDb={bootstrapSupabase}
-                  onSaveSopsToCloud={handleSaveSopsToCloud}
-                />
-              ) : currentSubTab === 'recap' ? (
-                <SOPRecap
-                  sops={sops}
-                  onSelectSOP={(sop) => setActiveSopDetail(sop)}
-                  onDeleteSOP={handleDeleteSOP}
-                />
               ) : (
                 /* 2.A MAIN SOP DASHBOARD SUB-TAB */
                 <div className="space-y-6">
@@ -1197,7 +1184,7 @@ export default function App() {
                         <Info className="h-6 w-6 text-neutral-400 mx-auto" />
                         <div className="space-y-1">
                           <p className="text-xs font-semibold text-neutral-600">Menu Belum Dikeluarkan untuk Tanggal Ini</p>
-                          <p className="text-[11.5px] text-neutral-400 max-w-sm mx-auto">Untuk menghasilkan tugas centang-centang harian, rilis menu harian terlebih dahulu melalui tab <strong>"Rilis / Atur Menu"</strong>.</p>
+                          <p className="text-[11.5px] text-neutral-400 max-w-sm mx-auto">Untuk menghasilkan tugas centang-centang harian, atur menu harian terlebih dahulu melalui <strong>"Set Master"</strong> di Dashboard SOP.</p>
                         </div>
                       </div>
                     )}

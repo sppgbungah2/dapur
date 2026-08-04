@@ -144,27 +144,7 @@ export default function StockOperasionalView({
 
     const targetDate = localStockDate || '2026-06-16';
     if (!operasionalMap[targetDate]) {
-      // Create initial list from default template
-      const initial = defaultOperasionalTemplate.map((item, idx) => {
-        // Calculate dynamic initial stock awal if yesterday has a recorded end stock
-        const yesterdayAkhir = getYesterdayStokAkhir(item.name, targetDate);
-        const derivedStokAwal = yesterdayAkhir !== null ? yesterdayAkhir : item.stokAwal;
-        
-        return {
-          ...item,
-          id: `op-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
-          stokAwal: derivedStokAwal,
-          stokAkhir: derivedStokAwal + item.barangMasuk // Maintain math integrity initially
-        };
-      }) as StockItem[];
-
-      setOperasionalMap(prev => {
-        if (prev[targetDate]) return prev;
-        return {
-          ...prev,
-          [targetDate]: initial
-        };
-      });
+      setOperasionalMap(prev => { if (prev[targetDate]) return prev; return { ...prev, [targetDate]: [] }; });
     }
   }, [localStockDate, isInitialFetchDone, operasionalMap, setOperasionalMap]);
 
@@ -508,15 +488,15 @@ export default function StockOperasionalView({
                     <div className="grid grid-cols-3 gap-1 text-center py-2 border-y border-neutral-100">
                       <div className="bg-neutral-50 rounded p-1.5">
                         <span className="text-[8px] text-neutral-500 block font-bold">BARANG</span>
-                        <span className="text-xs font-extrabold text-neutral-800 font-mono">${total}</span>
+                        <span className="text-xs font-extrabold text-neutral-800 font-mono">{total}</span>
                       </div>
                       <div className="bg-emerald-50 rounded p-1.5">
                         <span className="text-[8px] text-emerald-700 block font-bold">MASUK</span>
-                        <span className="text-xs font-extrabold text-emerald-950 font-mono">${totalMasuk.toFixed(0)}</span>
+                        <span className="text-xs font-extrabold text-emerald-950 font-mono">{totalMasuk.toFixed(0)}</span>
                       </div>
                       <div className="bg-amber-50 rounded p-1.5">
                         <span className="text-[8px] text-amber-700 block font-bold">KELUAR (EST)</span>
-                        <span className="text-xs font-extrabold text-amber-950 font-mono">${totalKeluar.toFixed(0)}</span>
+                        <span className="text-xs font-extrabold text-amber-950 font-mono">{totalKeluar.toFixed(0)}</span>
                       </div>
                     </div>
 

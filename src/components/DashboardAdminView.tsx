@@ -7,6 +7,7 @@ import { DayMenu, UserRole, Division, SOPDocument, TaskItem } from '../types';
 import { DEFAULT_PORTIONS, PortionConfig } from './PortionMasterView';
 import { SisaStokItem, OrderRequestItem, VolunteerComplaintItem } from './MockModules';
 import PerencanaanMenuPorsi from "./PerencanaanMenuPorsi";
+import FullDocumentBundlePDF from "./FullDocumentBundlePDF";
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface DashboardAdminViewProps {
@@ -46,6 +47,7 @@ export default function DashboardAdminView({
   const [isSetMasterOpen, setIsSetMasterOpen] = useState(false);
   const [masterDate, setMasterDate] = useState(selectedDate);
   const [portions, setPortions] = useState<PortionConfig>({ ...DEFAULT_PORTIONS });
+  const [selectedBundleDate, setSelectedBundleDate] = useState<string | null>(null);
 
   // For the monthly calendar view
   const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate || new Date().toISOString()));
@@ -65,8 +67,8 @@ export default function DashboardAdminView({
       let docs: any[] = [];
       let sopData: any[] = [];
 
-      if (isSupabaseConfigured && supabase) {
-        const [resMenus, resPortions, resSops, resSj, resBast, resOrlep] = await Promise.all([
+if (isSupabaseConfigured && supabase) {
+        const [resMenus, resPortions, resSops, resSj, resBast, resOrlep] = await Promise.allSettled([
           supabase.from('day_menus').select('*').gte('date', startDate).lte('date', endDate),
           supabase.from('master_porsi').select('date, portions').gte('date', startDate).lte('date', endDate),
           supabase.from('sops').select('date, status, signature_supervisor_url, signature_coordinator_url, is_checked_all').gte('date', startDate).lte('date', endDate),
@@ -75,14 +77,18 @@ export default function DashboardAdminView({
           supabase.from('organoleptik_docs').select('date, orlep_signature, status').gte('date', startDate).lte('date', endDate)
         ]);
         
-        menus = resMenus.data || [];
-        portionsData = resPortions.data || [];
-        sopData = resSops.data || [];
+        menus = resMenus.status === 'fulfilled' && resMenus.value.data ? resMenus.value.data : [];
+        portionsData = resPortions.status === 'fulfilled' && resPortions.value.data ? resPortions.value.data : [];
+        sopData = resSops.status === 'fulfilled' && resSops.value.data ? resSops.value.data : [];
+        
+        const sjData = resSj.status === 'fulfilled' && resSj.value.data ? resSj.value.data : [];
+        const bastData = resBast.status === 'fulfilled' && resBast.value.data ? resBast.value.data : [];
+        const orlepData = resOrlep.status === 'fulfilled' && resOrlep.value.data ? resOrlep.value.data : [];
         
         docs = [
-           ...(resSj.data || []).map(d => ({ date: d.date, type: 'surat_jalan', sjSignatureReceiver: d.sj_signature_receiver })),
-           ...(resBast.data || []).map(d => ({ date: d.date, type: 'serah_terima', bastSignatureReceiver: d.bast_signature_receiver })),
-           ...(resOrlep.data || []).map(d => ({ date: d.date, type: 'organoleptik', orlepSignature: d.orlep_signature }))
+           ...sjData.map(d => ({ date: d.date, type: 'surat_jalan', sjSignatureReceiver: d.sj_signature_receiver })),
+           ...bastData.map(d => ({ date: d.date, type: 'serah_terima', bastSignatureReceiver: d.bast_signature_receiver })),
+           ...orlepData.map(d => ({ date: d.date, type: 'organoleptik', orlepSignature: d.orlep_signature }))
         ];
       } else {
         menus = allDayMenus.filter(m => m.date.startsWith(`${year}-${String(month).padStart(2, '0')}`));
@@ -134,8 +140,8 @@ export default function DashboardAdminView({
 
 
         const checkDocStatus = (arr: any[], sigField: string, expectedCount: number = 6) => {
-          if (expectedCount === 0) return 'Belum Ada'; // Nothing expected
           if (arr.length === 0) return 'Belum Ada';
+          if (expectedCount === 0) return `${arr.length} Dokumen`; // Shows what's there even if unexpected
           const allSigned = arr.every(d => d[sigField] && String(d[sigField]).length > 10);
           if (arr.length < expectedCount) {
              return `${arr.length}/${expectedCount} Dokumen`;
@@ -161,13 +167,26 @@ export default function DashboardAdminView({
           }
         }
 
+        const isSjComplete = sjStatus.startsWith('Lengkap');
+        const isBastComplete = bastStatus.startsWith('Lengkap');
+        const isOrlepComplete = orlepStatus.startsWith('Lengkap');
+        const isSopComplete = sopStatus.startsWith('Lengkap');
+        const isComplete = isSjComplete && isBastComplete && isOrlepComplete && isSopComplete;
+
         aggregated[dStr] = {
           menu: dayMenu ? (dayMenu.menu_list ? dayMenu.menu_list.join(', ') : (dayMenu.menuList ? dayMenu.menuList.join(', ') : '')) : '-',
           pm: totalPM,
           sj: sjStatus,
           bast: bastStatus,
           orlep: orlepStatus,
-          sop: sopStatus
+          sop: sopStatus,
+          isComplete,
+          detailStatus: {
+            sj: sjStatus,
+            bast: bastStatus,
+            orlep: orlepStatus,
+            sop: sopStatus
+          }
         };
       }
       setMonthlyData(aggregated);
@@ -232,6 +251,14 @@ export default function DashboardAdminView({
             
             {/* Quick Action Buttons */}
             <div className="flex items-center gap-2 flex-wrap">
+              {isSetMasterOpen && (
+                <input 
+                  type="date"
+                  value={masterDate}
+                  onChange={(e) => setMasterDate(e.target.value)}
+                  className="bg-emerald-900 border border-emerald-500/50 text-white text-xs font-bold px-3 py-2 rounded-xl focus:outline-none"
+                />
+              )}
               <button
                 onClick={() => setIsSetMasterOpen(!isSetMasterOpen)}
                 className="bg-emerald-700 hover:bg-emerald-600 active:scale-95 border border-emerald-500/30 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
@@ -317,19 +344,20 @@ export default function DashboardAdminView({
                 <th className="px-4 py-3 border-b border-neutral-200 font-bold">BAST</th>
                 <th className="px-4 py-3 border-b border-neutral-200 font-bold">Organoleptik</th>
                 <th className="px-4 py-3 border-b border-neutral-200 font-bold">SOP</th>
+                <th className="px-4 py-3 border-b border-neutral-200 font-bold">Rekap Dokumen</th>
               </tr>
             </thead>
             <tbody className="text-xs divide-y divide-neutral-100">
               {loadingMonth ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-neutral-500">
+                  <td colSpan={8} className="text-center py-12 text-neutral-500">
                     <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-emerald-600" />
                     Memuat data...
                   </td>
                 </tr>
               ) : Object.keys(monthlyData).length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-neutral-500">
+                  <td colSpan={8} className="text-center py-12 text-neutral-500">
                     Tidak ada data untuk bulan ini.
                   </td>
                 </tr>
@@ -345,6 +373,20 @@ export default function DashboardAdminView({
                       <td className="px-4 py-3"><StatusBadge status={data.bast} /></td>
                       <td className="px-4 py-3"><StatusBadge status={data.orlep} /></td>
                       <td className="px-4 py-3"><StatusBadge status={data.sop} /></td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => setSelectedBundleDate(date)}
+                          className={`font-bold px-3 py-1.5 rounded-xl shadow-xs text-xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 ${
+                            data.isComplete 
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
+                              : 'bg-amber-500 hover:bg-amber-600 text-white'
+                          }`}
+                          title="Unduh / Cetak Kumpulan Semua Dokumen Bundle PDF (Surat Jalan, BAST, Organoleptik, SOP)"
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                          <span>Rekap PDF {data.isComplete ? '' : ' (Draft)'}</span>
+                        </button>
+                      </td>
                     </tr>
                   );
                 })
@@ -353,6 +395,17 @@ export default function DashboardAdminView({
           </table>
         </div>
       </div>
+
+      {/* Full Document Bundle PDF Preview Modal */}
+      {selectedBundleDate && (
+        <FullDocumentBundlePDF
+          selectedDate={selectedBundleDate}
+          allDayMenus={allDayMenus}
+          sops={sops}
+          shippingDocs={shippingDocs}
+          onClose={() => setSelectedBundleDate(null)}
+        />
+      )}
     </div>
   );
 }

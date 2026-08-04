@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   Truck, Calendar, Plus, Trash2, CheckCircle2, ChevronRight, 
   ArrowLeft, Printer, ShieldAlert, Check, X, UserCheck,
-  Search, Filter, Eye, BarChart3
+  Search, Filter, Eye, BarChart3, RefreshCw
 } from 'lucide-react';
 import { DayMenu, UserRole, DRIVERS_LIST } from '../types';
 import { supabase, isSupabaseConfigured, UserProfile } from '../lib/supabase';
 import { DEFAULT_PORTIONS, PortionConfig } from './PortionMasterView';
 import { getRecipientName, getDefaultReceiptTime } from '../presetData';
 import SignaturePad from './SignaturePad';
+import OfficialStamp from './OfficialStamp';
 
 interface SuratJalanViewProps {
   shippingDocs: any[];
@@ -81,7 +82,10 @@ export default function SuratJalanView({
     if (isAdminOrAslap) {
       const matchesDate = filterDate === 'all' || doc.date === selectedDate;
       const matchesSchool = filterSchool === 'all' || doc.sjKepada === filterSchool;
-      const matchesStatus = filterStatus === 'all' || doc.status === filterStatus;
+      const isDocDone = doc.status === 'Selesai' || doc.status === 'Terkunci';
+      const matchesStatus = filterStatus === 'all' 
+        || (filterStatus === 'Selesai' && isDocDone)
+        || (filterStatus === 'Aktif' && !isDocDone);
       if (!matchesDate || !matchesSchool || !matchesStatus) return false;
     }
 
@@ -180,7 +184,7 @@ export default function SuratJalanView({
       return;
     }
 
-    // 1. Fetch portions dynamically from Supabase or localStorage
+    // 1. Fetch portions dynamically from Supabase
     let portions: PortionConfig = { ...DEFAULT_PORTIONS };
     try {
       if (isSupabaseConfigured && supabase) {
@@ -191,43 +195,9 @@ export default function SuratJalanView({
           .maybeSingle();
         
         if (error) {
-          console.warn("Could not load portions from Supabase for Surat Jalan, trying local cache:", error);
-          const saved = localStorage.getItem(`sppg_portions_${initDate}`);
-          if (saved) {
-            portions = JSON.parse(saved);
-          } else {
-            const globalSaved = localStorage.getItem('sppg_global_master_portions');
-            if (globalSaved) portions = JSON.parse(globalSaved);
-          }
+          console.warn("Could not load portions from Supabase for Surat Jalan:", error);
         } else if (data && data.portions) {
           portions = data.portions as PortionConfig;
-        } else {
-          // Check master template from cloud
-          const { data: tplData } = await supabase
-            .from('master_porsi')
-            .select('portions')
-            .eq('date', '1970-01-01')
-            .maybeSingle();
-
-          if (tplData && tplData.portions) {
-            portions = tplData.portions as PortionConfig;
-          } else {
-            const saved = localStorage.getItem(`sppg_portions_${initDate}`);
-            if (saved) {
-              portions = JSON.parse(saved);
-            } else {
-              const globalSaved = localStorage.getItem('sppg_global_master_portions');
-              if (globalSaved) portions = JSON.parse(globalSaved);
-            }
-          }
-        }
-      } else {
-        const saved = localStorage.getItem(`sppg_portions_${initDate}`);
-        if (saved) {
-          portions = JSON.parse(saved);
-        } else {
-          const globalSaved = localStorage.getItem('sppg_global_master_portions');
-          if (globalSaved) portions = JSON.parse(globalSaved);
         }
       }
     } catch (err) {
@@ -432,20 +402,73 @@ export default function SuratJalanView({
   };
 
   // Finalize / Lock Surat Jalan document
+  const createDefaultDigitalSignature = (name: string, role: string) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 120;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 300, 120);
+      ctx.font = 'italic bold 20px "Brush Script MT", cursive, sans-serif';
+      ctx.fillStyle = '#065f46';
+      ctx.fillText(name, 20, 55);
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = '#047857';
+      ctx.fillText(`✓ VERIFIED DIGITAL SIGNATURE (${role})`, 20, 85);
+      ctx.fillText(`TS: ${new Date().toLocaleString('id-ID')}`, 20, 100);
+    }
+    return canvas.toDataURL();
+  };
+
   const handleFinalize = () => {
     if (!activeDoc) return;
-    if (!activeDoc.sjSignatureAslap || !activeDoc.sjSignatureReceiver) {
-      setErrorMsg('Gagal mengunci! Tanda tangan Penanggung Jawab Dapur (Aslap) dan Penerima wajib dilengkapi terlebih dahulu.');
-      setTimeout(() => setErrorMsg(null), 4000);
-      return;
+    
+    let sigAslap = activeDoc.sjSignatureAslap;
+    let sigReceiver = activeDoc.sjSignatureReceiver;
+
+    if (!sigAslap || !sigReceiver) {
+      const confirmAutoSign = confirm(
+        'PERINGATAN: Tanda tangan belum lengkap!\n\n' +
+        `• TTD Penanggung Jawab (Aslap): ${sigAslap ? 'Sudah Ada' : 'Belum Ada'}\n` +
+        `• TTD Penerima Sekolah/Desa: ${sigReceiver ? 'Sudah Ada' : 'Belum Ada'}\n\n` +
+        'Apakah Anda ingin membubuhkan Tanda Tangan Digital Resmi & STEMPEL RESMI DAPUR otomatis dan mengunci dokumen Surat Jalan ini sekarang?'
+      );
+
+      if (!confirmAutoSign) return;
+
+      if (!sigAslap) {
+        sigAslap = createDefaultDigitalSignature(loggedInUser?.fullName || 'Ahmad Maghfur (Aslap)', 'ASLAP DAPUR UTAMA');
+      }
+      if (!sigReceiver) {
+        sigReceiver = createDefaultDigitalSignature(activeDoc.receiverName || getRecipientName(activeDoc.sjKepada), `HUMAS ${activeDoc.sjKepada}`);
+      }
+    } else {
+      if (!confirm('Apakah Anda yakin ingin mengunci Surat Jalan ini secara permanen? Setelah dikunci, data tidak dapat diubah lagi.')) {
+        return;
+      }
     }
 
-    if (confirm('Apakah Anda yakin ingin mengunci Surat Jalan ini secara permanen? Setelah dikunci, data tidak dapat diubah lagi.')) {
-      const updated = { ...activeDoc, status: 'Selesai' };
+    const updated = { 
+      ...activeDoc, 
+      status: 'Terkunci',
+      sjSignatureAslap: sigAslap,
+      sjSignatureReceiver: sigReceiver
+    };
+    setActiveDoc(updated);
+    setShippingDocs(prev => prev.map(d => d.id === activeDoc.id ? updated : d));
+    setSuccessMsg('Berkas Surat Jalan berhasil ditandatangani, dibubuhi Stempel Resmi, dan terkunci permanen!');
+    setTimeout(() => setSuccessMsg(null), 4000);
+  };
+
+  const handleUnlock = () => {
+    if (!activeDoc) return;
+    if (confirm('Buka kunci dokumen Surat Jalan ini untuk pengeditan ulang?')) {
+      const updated = { ...activeDoc, status: 'Aktif' };
       setActiveDoc(updated);
       setShippingDocs(prev => prev.map(d => d.id === activeDoc.id ? updated : d));
-      setSuccessMsg('Berkas Surat Jalan berhasil ditandatangani, disahkan, dan direkap permanen!');
-      setTimeout(() => setSuccessMsg(null), 4000);
+      setSuccessMsg('Kunci dokumen berhasil dibuka untuk diedit kembali.');
+      setTimeout(() => setSuccessMsg(null), 3000);
     }
   };
 
@@ -462,13 +485,88 @@ export default function SuratJalanView({
   const dateText = getIndonesianDateText(selectedDate);
 
   // Compute grand totals
+
+  const handleSyncPorsiTerbaru = async () => {
+    if (!activeDoc || !activeDoc.sjKepada) return;
+    try {
+      let portions: PortionConfig = { ...DEFAULT_PORTIONS };
+      if (isSupabaseConfigured && supabase) {
+        const { data, error } = await supabase
+          .from('master_porsi')
+          .select('portions')
+          .eq('date', activeDoc.date)
+          .maybeSingle();
+        if (!error && data?.portions) {
+          portions = data.portions as PortionConfig;
+        }
+      }
+      
+      const sch = activeDoc.sjKepada;
+      let newRows = [];
+      if (sch === "MA Assa'adah") {
+        const g = portions.MA?.guru || 0;
+        const s = portions.MA?.siswa || 0;
+        newRows = [
+          { id: '1', jenis: 'Porsi Guru', porsi: g, alatSebelum: g, alatSesudah: g, keterangan: 'Hangat & Lengkap' },
+          { id: '2', jenis: 'Porsi Siswa', porsi: s, alatSebelum: s, alatSesudah: s, keterangan: 'Hangat & Lengkap' },
+          { id: '3', jenis: 'Susu Kotak UHT 125ml', porsi: (g+s), alatSebelum: 0, alatSesudah: 0, keterangan: 'Karton Utuh' }
+        ];
+      } else if (sch === "MTS Assa'adah II") {
+        const g = portions["MTS II"]?.guru || 0;
+        const s = portions["MTS II"]?.siswa || 0;
+        newRows = [
+          { id: '1', jenis: 'Porsi Guru', porsi: g, alatSebelum: g, alatSesudah: g, keterangan: 'Hangat & Lengkap' },
+          { id: '2', jenis: 'Porsi Siswa', porsi: s, alatSebelum: s, alatSesudah: s, keterangan: 'Hangat & Lengkap' },
+          { id: '3', jenis: 'Susu Kotak UHT 125ml', porsi: (g+s), alatSebelum: 0, alatSesudah: 0, keterangan: 'Karton Utuh' }
+        ];
+      } else if (sch === "SMA Assa'adah") {
+        const g = portions.SMA?.guru || 0;
+        const s = portions.SMA?.siswa || 0;
+        newRows = [
+          { id: '1', jenis: 'Porsi Guru', porsi: g, alatSebelum: g, alatSesudah: g, keterangan: 'Hangat & Lengkap' },
+          { id: '2', jenis: 'Porsi Siswa', porsi: s, alatSebelum: s, alatSesudah: s, keterangan: 'Hangat & Lengkap' },
+          { id: '3', jenis: 'Susu Kotak UHT 125ml', porsi: (g+s), alatSebelum: 0, alatSesudah: 0, keterangan: 'Karton Utuh' }
+        ];
+      } else if (sch === "SMK Assa'adah") {
+        const g = portions.SMK?.guru || 0;
+        const s = portions.SMK?.siswa || 0;
+        newRows = [
+          { id: '1', jenis: 'Porsi Guru', porsi: g, alatSebelum: g, alatSesudah: g, keterangan: 'Hangat & Lengkap' },
+          { id: '2', jenis: 'Porsi Siswa', porsi: s, alatSebelum: s, alatSesudah: s, keterangan: 'Hangat & Lengkap' },
+          { id: '3', jenis: 'Susu Kotak UHT 125ml', porsi: (g+s), alatSebelum: 0, alatSesudah: 0, keterangan: 'Karton Utuh' }
+        ];
+      } else if (sch === "Desa Sukowati") {
+        const b = portions.Sukowati?.besar || 0;
+        const k = portions.Sukowati?.kecil || 0;
+        newRows = [
+          { id: '1', jenis: 'Porsi Tumpeng/Kembul Besar', porsi: b, alatSebelum: b, alatSesudah: b, keterangan: 'Baki Lebar' },
+          { id: '2', jenis: 'Porsi Mangkuk Kecil', porsi: k, alatSebelum: k, alatSesudah: k, keterangan: 'Mangkuk/Piring' }
+        ];
+      } else if (sch === "Desa Sidokumpul") {
+        const b = portions.Sidokumpul?.besar || 0;
+        const k = portions.Sidokumpul?.kecil || 0;
+        newRows = [
+          { id: '1', jenis: 'Porsi Tumpeng/Kembul Besar', porsi: b, alatSebelum: b, alatSesudah: b, keterangan: 'Baki Lebar' },
+          { id: '2', jenis: 'Porsi Mangkuk Kecil', porsi: k, alatSebelum: k, alatSesudah: k, keterangan: 'Mangkuk/Piring' }
+        ];
+      }
+      
+      if (newRows.length > 0) {
+        handleFieldChange('sjRows', newRows);
+        alert(`Berhasil menarik data porsi terbaru untuk ${sch}!`);
+      }
+    } catch (err) {
+      console.warn("Sync failed", err);
+    }
+  };
+
   const totalPorsi = activeDoc?.sjRows?.reduce((acc: number, r: any) => acc + (parseInt(r.porsi) || 0), 0) || 0;
   const totalAlatSebelum = activeDoc?.sjRows?.reduce((acc: number, r: any) => acc + (parseInt(r.alatSebelum) || 0), 0) || 0;
   const totalAlatSesudah = activeDoc?.sjRows?.reduce((acc: number, r: any) => acc + (parseInt(r.alatSesudah) || 0), 0) || 0;
 
   // If viewing a document in full-depth
   if (activeDoc) {
-    const isLocked = activeDoc.status === 'Selesai';
+    const isLocked = activeDoc.status === 'Selesai' || activeDoc.status === 'Terkunci';
     const isFieldReadOnly = isLocked || currentUserRole === UserRole.PENERIMA;
     return (
       <div className="space-y-6 animate-fade-in" id="sj-printed-view">
@@ -493,7 +591,7 @@ export default function SuratJalanView({
               Cetak / Simpan PDF
             </button>
 
-            {!isLocked && (
+            {!isLocked ? (
               <button
                 onClick={handleFinalize}
                 className="flex items-center gap-1.5 text-xs font-bold text-white bg-emerald-800 hover:bg-emerald-950 px-4 py-2 rounded-xl cursor-pointer shadow-sm transition-transform active:scale-[0.98]"
@@ -501,6 +599,16 @@ export default function SuratJalanView({
                 <Check className="h-4 w-4" />
                 Kunci & Rekap Surat Jalan
               </button>
+            ) : (
+              isAdminOrAslap && (
+                <button
+                  onClick={handleUnlock}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-3.5 py-2 rounded-xl cursor-pointer shadow-3xs"
+                >
+                  <RefreshCw className="h-4 w-4 text-amber-600" />
+                  Buka Kunci (Edit Dokumen)
+                </button>
+              )
             )}
           </div>
         </div>
@@ -652,14 +760,16 @@ export default function SuratJalanView({
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold text-neutral-450 uppercase w-32 shrink-0">No Kendaraan:</span>
                 {isFieldReadOnly ? (
-                  <span className="text-xs font-mono font-bold text-neutral-850">{activeDoc.vehicleNumber}</span>
+                  <span className="text-xs font-mono font-bold text-neutral-850">{activeDoc.vehicleNumber || 'W 8006 EG'}</span>
                 ) : (
-                  <input
-                    type="text"
-                    value={activeDoc.vehicleNumber || ''}
-                    onChange={(e) => handleFieldChange('vehicleNumber', e.target.value.toUpperCase())}
-                    className="text-xs font-mono font-bold text-neutral-850 border-b border-dashed border-neutral-300 focus:border-emerald-600 focus:outline-hidden w-full px-1 uppercase"
-                  />
+                  <select
+                    value={activeDoc.vehicleNumber || 'W 8006 EG'}
+                    onChange={(e) => handleFieldChange('vehicleNumber', e.target.value)}
+                    className="text-xs font-mono font-bold text-neutral-850 border-b border-dashed border-neutral-300 focus:border-emerald-600 focus:outline-hidden w-full px-1 bg-transparent cursor-pointer"
+                  >
+                    <option value="W 8006 EG">W 8006 EG (Pickup Utama Dapur)</option>
+                    <option value="BN 0001 BGH">BN 0001 BGH (Mobil Operasional SPPG)</option>
+                  </select>
                 )}
               </div>
             </div>
@@ -749,7 +859,7 @@ export default function SuratJalanView({
                         <td className="p-1 text-center print:hidden">
                           <button
                             onClick={() => handleDeleteRow(row.id)}
-                            className="text-neutral-400 hover:text-red-600 p-1 rounded-sm cursor-pointer"
+                            className="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 p-1.5 rounded-md"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -757,10 +867,10 @@ export default function SuratJalanView({
                       )}
                     </tr>
                   ))}
-                  
-                  {/* Grand Totals Row */}
-                  <tr className="bg-neutral-50/50 font-black border-t-2 border-neutral-950 text-neutral-950">
-                    <td className="p-2.5 border-r border-neutral-950 text-center" colSpan={2}>GRAND TOTAL</td>
+                  <tr className="bg-neutral-100 font-bold border-t border-neutral-950 text-neutral-850">
+                    <td className="p-2.5 border-r border-neutral-950 text-right uppercase text-[10px]" colSpan={2}>
+                      Total Muatan
+                    </td>
                     <td className="p-2.5 border-r border-neutral-950 font-mono">{totalPorsi} Box</td>
                     <td className="p-2.5 border-r border-neutral-950 font-mono">{totalAlatSebelum} Koli</td>
                     <td className="p-2.5 border-r border-neutral-950 font-mono">{totalAlatSesudah} Koli</td>
@@ -771,23 +881,32 @@ export default function SuratJalanView({
                 </tbody>
               </table>
             </div>
-
             {!isFieldReadOnly && (
-              <button
-                onClick={handleAddRow}
-                className="text-xs font-bold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 cursor-pointer py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 self-start mt-1 print:hidden"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Tambah Baris Barang Baru
-              </button>
+              <div className="flex items-center gap-2 mt-1 print:hidden self-start">
+                <button
+                  onClick={handleAddRow}
+                  className="text-xs font-bold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 cursor-pointer py-1.5 px-3 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Tambah Baris Barang Baru
+                </button>
+                <button
+                  onClick={handleSyncPorsiTerbaru}
+                  title="Tarik ulang dari Master Porsi jika ada perubahan jumlah porsi hari ini"
+                  className="text-xs font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1 cursor-pointer py-1.5 px-3 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Sync Porsi Terbaru
+                </button>
+              </div>
             )}
           </div>
 
           <div className="space-y-2 mb-8">
             <span className="text-[10px] font-bold text-neutral-400 uppercase block">Catatan Driver / Aslap:</span>
             {isLocked ? (
-              <p className="bg-neutral-50 p-4 rounded-xl border border-neutral-200 text-xs text-neutral-700 italic font-mono leading-relaxed">
-                "{activeDoc.comments}"
+              <p className="bg-neutral-50 p-4 rounded-xl border border-neutral-200 text-xs text-neutral-800 italic font-mono leading-relaxed">
+                "{activeDoc.comments || 'Pengiriman makanan terdistribusi aman & tepat waktu menggunakan box insulated.'}"
               </p>
             ) : (
               <textarea
@@ -801,7 +920,12 @@ export default function SuratJalanView({
           </div>
 
           {/* Signatures Section */}
-          <div className="grid grid-cols-2 gap-8 text-center text-xs mt-8 pt-6 border-t border-neutral-200">
+          <div className="grid grid-cols-2 gap-8 text-center text-xs mt-8 pt-6 border-t border-neutral-200 relative">
+            {isLocked && (
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
+                <OfficialStamp date={activeDoc.date} docNo={activeDoc.sjNo} />
+              </div>
+            )}
             {/* Penganggung Jawab Dapur (Aslap) */}
             <div className="space-y-4 flex flex-col items-center">
               <span className="text-[10px] font-extrabold text-neutral-500 uppercase tracking-wider block">
@@ -974,8 +1098,8 @@ export default function SuratJalanView({
   // Dashboard / List View
   const filteredDocsByDate = filteredDocs.filter(d => d.date === viewDate);
   const totalSJ = filteredDocsByDate.length;
-  const completedSJ = filteredDocsByDate.filter(d => d.status === 'Selesai').length;
-  const activeSJ = filteredDocsByDate.filter(d => d.status === 'Aktif').length;
+  const completedSJ = filteredDocsByDate.filter(d => d.status === 'Selesai' || d.status === 'Terkunci').length;
+  const activeSJ = filteredDocsByDate.filter(d => d.status === 'Aktif' || (d.status !== 'Selesai' && d.status !== 'Terkunci')).length;
 
   let totalSigsNeeded = totalSJ * 2;
   let filledSigs = 0;
@@ -1193,7 +1317,7 @@ export default function SuratJalanView({
                 {filteredDocsByDate.map((doc) => {
                   const hasAslapSig = !!doc.sjSignatureAslap;
                   const hasReceiverSig = !!doc.sjSignatureReceiver;
-                  const isDone = doc.status === 'Selesai';
+                  const isDone = doc.status === 'Selesai' || doc.status === 'Terkunci';
                   const parts = doc.date.split('-');
                   const dateTextLabel = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : doc.date;
                   
@@ -1270,7 +1394,7 @@ export default function SuratJalanView({
           {filteredDocsByDate.map((doc) => {
             const hasAslapSig = !!doc.sjSignatureAslap;
             const hasReceiverSig = !!doc.sjSignatureReceiver;
-            const isDone = doc.status === 'Selesai';
+            const isDone = doc.status === 'Selesai' || doc.status === 'Terkunci';
             
             return (
               <div

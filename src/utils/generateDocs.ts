@@ -200,3 +200,63 @@ export async function generateInitialDocsAsync(
 
   return [...currentDocs, ...newDocsCreated];
 }
+
+export function updateExistingDocsWithPortions(currentDocs: any[], date: string, portions: PortionConfig): any[] {
+  const getPortionCount = (schName: string) => {
+    if (!schName) return 0;
+    if (schName.includes("MA")) return (portions.MA?.guru || 0) + (portions.MA?.siswa || 0);
+    if (schName.includes("MTS")) return (portions["MTS II"]?.guru || 0) + (portions["MTS II"]?.siswa || 0);
+    if (schName.includes("SMA")) return (portions.SMA?.guru || 0) + (portions.SMA?.siswa || 0);
+    if (schName.includes("SMK")) return (portions.SMK?.guru || 0) + (portions.SMK?.siswa || 0);
+    if (schName.includes("Sukowati")) return (portions.Sukowati?.besar || 0) + (portions.Sukowati?.kecil || 0);
+    if (schName.includes("Sidokumpul")) return (portions.Sidokumpul?.besar || 0) + (portions.Sidokumpul?.kecil || 0);
+    return 0;
+  };
+
+  return currentDocs.map(doc => {
+    if (doc.date !== date) return doc;
+
+    const sch = doc.bastSekolah || doc.sjKepada || doc.receiverName || '';
+
+    if (doc.type === 'serah_terima') {
+      const newCount = getPortionCount(sch);
+      return {
+        ...doc,
+        bastJumlah: newCount > 0 ? newCount : doc.bastJumlah
+      };
+    }
+
+    if (doc.type === 'surat_jalan') {
+      const tot = getPortionCount(sch);
+      let sjRows = doc.sjRows || [];
+      if (sch.includes('Desa') || sch.includes('Sukowati') || sch.includes('Sidokumpul')) {
+        let b = 0, k = 0;
+        if (sch.includes('Sukowati')) { b = portions.Sukowati?.besar || 0; k = portions.Sukowati?.kecil || 0; }
+        if (sch.includes('Sidokumpul')) { b = portions.Sidokumpul?.besar || 0; k = portions.Sidokumpul?.kecil || 0; }
+        sjRows = [
+          { id: '1', jenis: 'Porsi Kecil', porsi: k, alatSebelum: k, alatSesudah: k, keterangan: 'Hangat & Lengkap' },
+          { id: '2', jenis: 'Porsi Besar', porsi: b, alatSebelum: b, alatSesudah: b, keterangan: 'Hangat & Lengkap' },
+          { id: '3', jenis: 'Susu Kotak UHT 125ml', porsi: tot, alatSebelum: 0, alatSesudah: 0, keterangan: 'Karton Utuh' }
+        ];
+      } else {
+        let g = 0, s = 0;
+        if (sch.includes('MA')) { g = portions.MA?.guru || 0; s = portions.MA?.siswa || 0; }
+        if (sch.includes('MTS')) { g = portions["MTS II"]?.guru || 0; s = portions["MTS II"]?.siswa || 0; }
+        if (sch.includes('SMA')) { g = portions.SMA?.guru || 0; s = portions.SMA?.siswa || 0; }
+        if (sch.includes('SMK')) { g = portions.SMK?.guru || 0; s = portions.SMK?.siswa || 0; }
+        sjRows = [
+          { id: '1', jenis: 'Porsi Guru / Pendamping', porsi: g, alatSebelum: g, alatSesudah: g, keterangan: 'Hangat & Lengkap' },
+          { id: '2', jenis: 'Porsi Siswa / Penerima', porsi: s, alatSebelum: s, alatSesudah: s, keterangan: 'Hangat & Lengkap' },
+          { id: '3', jenis: 'Susu Kotak UHT 125ml', porsi: tot, alatSebelum: 0, alatSesudah: 0, keterangan: 'Karton Utuh' }
+        ];
+      }
+      return {
+        ...doc,
+        sjRows
+      };
+    }
+
+    return doc;
+  });
+}
+

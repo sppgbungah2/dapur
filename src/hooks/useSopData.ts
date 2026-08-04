@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { SOPDocument, Division, DayMenu, TaskItem, UserRole } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { safeLocalStorageSetItem, safeLocalStorageGetItem } from '../lib/storage';
 import { 
   getSopTaskTableNames, 
   getSopTaskTableName,
@@ -31,27 +30,7 @@ export function useSopData(selectedDate: string) {
   const deletedSopIdsRef = useRef<Set<string>>(new Set());
   const isUpdatingSopRef = useRef<boolean>(false);
 
-  // Load from LocalStorage fallback initially
-  useEffect(() => {
-    try {
-      const savedSops = safeLocalStorageGetItem('sppg_sops');
-      if (savedSops) {
-        const parsed = JSON.parse(savedSops);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setSops(parsed);
-        }
-      }
-    } catch (e) {
-      console.warn('Error reading localStorage sops:', e);
-    }
-  }, []);
-
-  // Sync state to LocalStorage
-  useEffect(() => {
-    if (sops.length > 0) {
-      safeLocalStorageSetItem('sppg_sops', JSON.stringify(sops));
-    }
-  }, [sops]);
+  // (Removed LocalStorage fallbacks)
 
   // Fetch SOPs and Menus from Cloud Supabase (filtered by active selectedDate to minimize Egress)
   const fetchSopsAndMenus = useCallback(async () => {
@@ -282,7 +261,7 @@ export function useSopData(selectedDate: string) {
       })
       .subscribe((status) => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.warn('Realtime WebSocket connection to backend is not enabled on this server. Standard REST sync is active.');
+          // Standard REST sync fallback active without repetitive log noise
           if (channel) {
             try {
               supabase.removeChannel(channel);
@@ -571,7 +550,6 @@ export function useSopData(selectedDate: string) {
     setSops(prev => {
       const existingOtherDates = prev.filter(p => normalizeDateISO(p.date) !== targetDate);
       const updatedSopsList = [...existingOtherDates, ...generated];
-      safeLocalStorageSetItem('sppg_sops', JSON.stringify(updatedSopsList));
       return updatedSopsList;
     });
 

@@ -165,27 +165,7 @@ export default function StockOpnameView({
 
     const targetDate = localStockDate || '2026-06-16';
     if (!stockMap[targetDate]) {
-      // Create initial list from default template
-      const initial = defaultStockTemplate.map((item, idx) => {
-        // Calculate dynamic initial stock awal if yesterday has a recorded end stock
-        const yesterdayAkhir = getYesterdayStokAkhir(item.name, targetDate);
-        const derivedStokAwal = yesterdayAkhir !== null ? yesterdayAkhir : item.stokAwal;
-        
-        return {
-          ...item,
-          id: `st-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
-          stokAwal: derivedStokAwal,
-          stokAkhir: derivedStokAwal + item.barangMasuk // Maintain math integrity initially
-        };
-      }) as StockItem[];
-
-      setStockMap(prev => {
-        if (prev[targetDate]) return prev;
-        return {
-          ...prev,
-          [targetDate]: initial
-        };
-      });
+      setStockMap(prev => { if (prev[targetDate]) return prev; return { ...prev, [targetDate]: [] }; });
     }
   }, [localStockDate, isInitialFetchDone, stockMap, setStockMap]);
 

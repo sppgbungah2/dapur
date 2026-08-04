@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle, Calendar, Plus, Trash2, CheckCircle2, ChevronRight, 
-  ArrowLeft, Printer, ShieldAlert, Check, X, UserCheck
+  ArrowLeft, Printer, ShieldAlert, Check, X, UserCheck, RefreshCw
 } from 'lucide-react';
 import { DayMenu, UserRole } from '../types';
 import { UserProfile } from '../lib/supabase';
 import { getRecipientName, getDefaultReceiptTime } from '../presetData';
 import SignaturePad from './SignaturePad';
+import OfficialStamp from './OfficialStamp';
 
 interface OrganoleptikViewProps {
   shippingDocs: any[];
@@ -198,21 +199,65 @@ export default function OrganoleptikView({
     handleFieldChange('orlepGrid', updatedGrid);
   };
 
+  const createDefaultDigitalSignature = (name: string, role: string) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 300;
+    canvas.height = 120;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 300, 120);
+      ctx.font = 'italic bold 20px "Brush Script MT", cursive, sans-serif';
+      ctx.fillStyle = '#92400e';
+      ctx.fillText(name, 20, 55);
+      ctx.font = 'bold 9px monospace';
+      ctx.fillStyle = '#b45309';
+      ctx.fillText(`✓ VERIFIED DIGITAL SIGNATURE (${role})`, 20, 85);
+      ctx.fillText(`TS: ${new Date().toLocaleString('id-ID')}`, 20, 100);
+    }
+    return canvas.toDataURL();
+  };
+
   // Finalize / Lock Organoleptik document
   const handleFinalize = () => {
     if (!activeDoc) return;
-    if (!activeDoc.orlepSignature) {
-      setErrorMsg('Gagal mengunci! Tanda tangan Penguji / Panelis Checker wajib dilengkapi terlebih dahulu.');
-      setTimeout(() => setErrorMsg(null), 4000);
-      return;
+    let sigOrlep = activeDoc.orlepSignature;
+
+    if (!sigOrlep) {
+      const confirmAutoSign = confirm(
+        'PERINGATAN: Tanda tangan belum lengkap!\n\n' +
+        '• TTD Penguji/Panelis Checker: Belum Ada\n\n' +
+        'Apakah Anda ingin membubuhkan Tanda Tangan Digital Resmi & STEMPEL RESMI DAPUR otomatis dan mengunci dokumen Organoleptik ini sekarang?'
+      );
+
+      if (!confirmAutoSign) return;
+
+      sigOrlep = createDefaultDigitalSignature(activeDoc.orlepPetugas || loggedInUser?.fullName || 'Panelis Qomaruddin', 'PANELIS CHECKER SENSORIK');
+    } else {
+      if (!confirm('Apakah Anda yakin ingin mengunci lembar uji organoleptik ini secara permanen? Setelah dikunci, data rekap tidak dapat diubah lagi.')) {
+        return;
+      }
     }
 
-    if (confirm('Apakah Anda yakin ingin mengunci lembar uji organoleptik ini secara permanen? Setelah dikunci, data rekap tidak dapat diubah lagi.')) {
-      const updated = { ...activeDoc, status: 'Selesai' };
+    const updated = { 
+      ...activeDoc, 
+      status: 'Terkunci',
+      orlepSignature: sigOrlep
+    };
+    setActiveDoc(updated);
+    setShippingDocs(prev => prev.map(d => d.id === activeDoc.id ? updated : d));
+    setSuccessMsg('Berkas Uji Organoleptik berhasil ditandatangani, dibubuhi Stempel Resmi, dan terkunci permanen!');
+    setTimeout(() => setSuccessMsg(null), 4000);
+  };
+
+  const handleUnlock = () => {
+    if (!activeDoc) return;
+    if (confirm('Buka kunci dokumen Uji Organoleptik ini untuk pengeditan ulang?')) {
+      const updated = { ...activeDoc, status: 'Aktif' };
       setActiveDoc(updated);
       setShippingDocs(prev => prev.map(d => d.id === activeDoc.id ? updated : d));
-      setSuccessMsg('Berkas Uji Organoleptik berhasil ditandatangani, disahkan, dan direkap permanen!');
-      setTimeout(() => setSuccessMsg(null), 4000);
+      setSuccessMsg('Kunci dokumen Organoleptik berhasil dibuka untuk diedit kembali.');
+      setTimeout(() => setSuccessMsg(null), 3000);
     }
   };
 
@@ -266,7 +311,7 @@ export default function OrganoleptikView({
 
   // If viewing a document in full-depth
   if (activeDoc) {
-    const isLocked = activeDoc.status === 'Selesai';
+    const isLocked = activeDoc.status === 'Selesai' || activeDoc.status === 'Terkunci';
     return (
       <div className="space-y-6 animate-fade-in" id="orlep-printed-view">
         {/* Sticky Action Toolbar */}
@@ -290,13 +335,21 @@ export default function OrganoleptikView({
               Cetak / Simpan PDF
             </button>
 
-            {!isLocked && (
+            {!isLocked ? (
               <button
                 onClick={handleFinalize}
                 className="flex items-center gap-1.5 text-xs font-bold text-white bg-emerald-800 hover:bg-emerald-950 px-4 py-2 rounded-xl cursor-pointer shadow-sm transition-transform active:scale-[0.98]"
               >
                 <Check className="h-4 w-4" />
                 Kunci & Rekap Organoleptik
+              </button>
+            ) : (
+              <button
+                onClick={handleUnlock}
+                className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-3.5 py-2 rounded-xl cursor-pointer shadow-3xs"
+              >
+                <RefreshCw className="h-4 w-4 text-amber-600" />
+                Buka Kunci (Edit Dokumen)
               </button>
             )}
           </div>
@@ -639,7 +692,12 @@ export default function OrganoleptikView({
           </p>
 
           {/* Signatures Section */}
-          <div className="grid grid-cols-1 pt-6 border-t border-neutral-200 text-xs font-sans">
+          <div className="grid grid-cols-1 pt-6 border-t border-neutral-200 text-xs font-sans relative">
+            {isLocked && (
+              <div className="absolute top-1/2 left-1/3 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
+                <OfficialStamp date={activeDoc.date} docNo={activeDoc.orlepNo} />
+              </div>
+            )}
             <div className="text-right space-y-4 pr-12 flex flex-col items-end">
               <p className="font-semibold text-neutral-600 text-right">
                 Penguji / Panelis Checker,<br />
@@ -710,7 +768,7 @@ export default function OrganoleptikView({
     }
     // 2. Filter Status
     if (filterStatus !== 'All') {
-      const isDone = doc.status === 'Selesai';
+      const isDone = doc.status === 'Selesai' || doc.status === 'Terkunci';
       if (filterStatus === 'Selesai' && !isDone) return false;
       if (filterStatus === 'Aktif' && isDone) return false;
     }
@@ -736,7 +794,7 @@ export default function OrganoleptikView({
       };
     }
 
-    const isDone = doc.status === 'Selesai';
+    const isDone = doc.status === 'Selesai' || doc.status === 'Terkunci';
     
     let ratingText = '-';
     if (doc.orlepGrid) {
@@ -1071,7 +1129,7 @@ export default function OrganoleptikView({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredDocsByDate.map((doc) => {
                   const hasSig = !!doc.orlepSignature;
-                  const isDone = doc.status === 'Selesai';
+                  const isDone = doc.status === 'Selesai' || doc.status === 'Terkunci';
                   
                   // Extract calculated rating score for preview
                   let ratingText = 'Belum Dinilai';

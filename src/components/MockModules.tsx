@@ -117,6 +117,7 @@ function ShippingDocPanel({
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Form states
   const [vehicleNumber, setVehicleNumber] = useState('W 8006 EG');
@@ -2042,6 +2043,7 @@ export default function MockModules({
   const [searchTerm, setSearchTerm] = useState('');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [dbErrorMsg, setDbErrorMsg] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // Forms states
   const [formData, setFormData] = useState<Record<string, string>>({});
@@ -2070,23 +2072,14 @@ export default function MockModules({
     specification: string;
   }
 
-  const [kedatanganMap, setRawKedatanganMap] = useState<Record<string, KedatanganBarangItem[]>>(() => {
-    const saved = localStorage.getItem('sppg_kedatangan_barang_map');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.warn('Error parsing kedatangan barang map:', e);
-      }
-    }
-    return {};
-  });
+  const [kedatanganMap, setRawKedatanganMap] = useState<Record<string, KedatanganBarangItem[]>>({});
 
   const syncKedatanganMapToSupabase = async (
     prev: Record<string, KedatanganBarangItem[]>,
     next: Record<string, KedatanganBarangItem[]>
   ) => {
     if (!isSupabaseConfigured || !supabase) return;
+    setIsSyncing(true);
     try {
       const prevItems: { date: string; item: KedatanganBarangItem }[] = [];
       const nextItems: { date: string; item: KedatanganBarangItem }[] = [];
@@ -2181,6 +2174,7 @@ export default function MockModules({
 
   const syncShippingDocsToSupabase = async (prev: ShippingDocItem[], next: ShippingDocItem[]) => {
     if (!isSupabaseConfigured || !supabase) return;
+    setIsSyncing(true);
     try {
       const prevIds = new Set(prev.map(d => d.id));
       const nextIds = new Set(next.map(d => d.id));
@@ -2395,27 +2389,57 @@ export default function MockModules({
     }
   }, [selectedDate]);
 
-  const [stockMap, setStockMap] = useState<Record<string, StockItem[]>>(() => {
-    const raw = localStorage.getItem('sppg_stock_opname_by_date_v4');
-    if (raw) return JSON.parse(raw);
+  const [stockMap, setRawStockMap] = useState<Record<string, StockItem[]>>({});
 
-    const s16 = defaultStockTemplate.map(item => {
-      if (item.name === 'Beras Premium Cianjur') return { ...item, stokAwal: 20, barangMasuk: 10, stokAkhir: 30 };
-      if (item.name === 'Tempe Papan Bungkus Daun') return { ...item, stokAwal: 10, barangMasuk: 40, stokAkhir: 50 };
-      return item;
+  const setStockMap = (update: React.SetStateAction<Record<string, StockItem[]>>) => {
+    setRawStockMap(prev => {
+      const next = typeof update === 'function' ? (update as any)(prev) : update;
+      if (isSupabaseConfigured && supabase) {
+        setIsSyncing(true);
+        const promises = Object.keys(next).map(date => {
+          if (JSON.stringify(prev[date]) !== JSON.stringify(next[date])) {
+            return supabase.from('stock_opname_docs').upsert({ date, items: next[date] });
+          }
+          return Promise.resolve();
+        });
+        Promise.all(promises).finally(() => setTimeout(() => setIsSyncing(false), 800));
+      }
+      return next;
     });
+  };
 
-    const s17 = defaultStockTemplate.map(item => {
-      if (item.name === 'Beras Premium Cianjur') return { ...item, stokAwal: 30, barangMasuk: 0, stokAkhir: 30 };
-      if (item.name === 'Tempe Papan Bungkus Daun') return { ...item, stokAwal: 50, barangMasuk: 0, stokAkhir: 50 };
-      return item;
+  const setOperasionalMap = (update: React.SetStateAction<Record<string, StockItem[]>>) => {
+    setRawOperasionalMap(prev => {
+      const next = typeof update === 'function' ? (update as any)(prev) : update;
+      if (isSupabaseConfigured && supabase) {
+        setIsSyncing(true);
+        const promises = Object.keys(next).map(date => {
+          if (JSON.stringify(prev[date]) !== JSON.stringify(next[date])) {
+            return supabase.from('stok_operasional_docs').upsert({ date, items: next[date] });
+          }
+          return Promise.resolve();
+        });
+        Promise.all(promises).finally(() => setTimeout(() => setIsSyncing(false), 800));
+      }
+      return next;
     });
+  };
 
-    return {
-      '2026-06-16': s16,
-      '2026-06-17': s17,
-    };
-  });
+  const setTrashItems = (update: React.SetStateAction<TrashItem[]>) => {
+    setRawTrashItems(prev => {
+      const next = typeof update === 'function' ? (update as any)(prev) : update;
+      if (isSupabaseConfigured && supabase) {
+         setIsSyncing(true);
+         (async () => {
+           try {
+             await supabase.from('rekap_sampah_docs').upsert({ id: 'global', items: next });
+           } catch (e) {}
+           setTimeout(() => setIsSyncing(false), 800);
+         })();
+      }
+      return next;
+    });
+  };
 
   // Current active date's stock items
   const activeStockList = stockMap[selectedStockDate] && stockMap[selectedStockDate].length > 0
@@ -2436,52 +2460,7 @@ export default function MockModules({
   const [wasteViewMode, setWasteViewMode] = useState<'card' | 'table'>('card');
   const [expandedLogs, setExpandedLogs] = useState<Record<string, boolean>>({});
 
-  const [trashItems, setTrashItems] = useState<TrashItem[]>(() => {
-    const raw = localStorage.getItem('sppg_rekap_sampah_v3');
-    if (raw) return JSON.parse(raw);
-    return [
-      {
-        id: 'ts-1',
-        tanggal: '2026-06-16',
-        hari: 'Selasa',
-        namaMenu: 'Tumpeng Kuning, Sambal Goreng Kentang, Ayam Suwir',
-        porsiBesar: 250,
-        porsiKecil: 150,
-        gramasiMP: 50000,
-        gramasiLN: 12000,
-        gramasiLH: 35000,
-        gramasiSY: 18000,
-        gramasiBuah: 28000,
-        sampahMP: 1200,
-        sampahLN: 300,
-        sampahLH: 700,
-        sampahSY: 900,
-        sampahBuah: 1100,
-        sampahOrganik: 8.5,
-        sampahAnorganik: 1.8
-      },
-      {
-        id: 'ts-2',
-        tanggal: '2026-06-15',
-        hari: 'Senin',
-        namaMenu: 'Nasi Gurih Semur Telur, Tahu Bacem & Sop Sayur',
-        porsiBesar: 240,
-        porsiKecil: 160,
-        gramasiMP: 48000,
-        gramasiLN: 15000,
-        gramasiLH: 30000,
-        gramasiSY: 25000,
-        gramasiBuah: 32000,
-        sampahMP: 5400,
-        sampahLN: 1800,
-        sampahLH: 3600,
-        sampahSY: 4200,
-        sampahBuah: 2200,
-        sampahOrganik: 15.6,
-        sampahAnorganik: 2.1
-      }
-    ];
-  });
+  const [trashItems, setRawTrashItems] = useState<TrashItem[]>([]);
 
   const [newTrashDate, setNewTrashDate] = useState('');
   const [newTrashHari, setNewTrashHari] = useState('Senin');
@@ -2587,25 +2566,7 @@ export default function MockModules({
     }
   }, [selectedDate]);
 
-  const [operasionalMap, setOperasionalMap] = useState<Record<string, StockItem[]>>(() => {
-    const raw = localStorage.getItem('sppg_stok_operasional_by_date_v1');
-    if (raw) return JSON.parse(raw);
-
-    const s16 = defaultOperasionalTemplate.map(item => {
-      if (item.name === 'Sabun Cuci Piring Mama Lemon') return { ...item, stokAwal: 3, barangMasuk: 2, stokAkhir: 5 };
-      return item;
-    });
-
-    const s17 = defaultOperasionalTemplate.map(item => {
-      if (item.name === 'Sabun Cuci Piring Mama Lemon') return { ...item, stokAwal: 5, barangMasuk: 0, stokAkhir: 5 };
-      return item;
-    });
-
-    return {
-      '2026-06-16': s16,
-      '2026-06-17': s17,
-    };
-  });
+  const [operasionalMap, setRawOperasionalMap] = useState<Record<string, StockItem[]>>({});
 
   useEffect(() => {
     safeLocalStorageSetItem('sppg_stok_operasional_by_date_v1', JSON.stringify(operasionalMap));
@@ -2631,10 +2592,7 @@ export default function MockModules({
     rows: string[][];
   }
 
-  const [savedReports, setSavedReports] = useState<SavedReport[]>(() => {
-    const raw = safeLocalStorageGetItem('sppg_saved_reports_excel_v1');
-    return raw ? JSON.parse(raw) : [];
-  });
+  const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
 
   useEffect(() => {
     safeLocalStorageSetItem('sppg_saved_reports_excel_v1', JSON.stringify(savedReports));
@@ -2660,50 +2618,15 @@ export default function MockModules({
   };
 
   const loadSisaStokFromLocal = () => {
-    const raw = localStorage.getItem('sppg_sisa_stok');
-    if (raw) {
-      setStokSisa(JSON.parse(raw));
-    } else {
-      const defaults: SisaStokItem[] = [
-        { id: 'stok-1', item_name: 'Karkas Ayam Broiler', category: 'Protein Basah', quantity: '4.5 Kg', condition: 'Sangat Segar (Chiller)', action_plan: 'Masuk Menu Masak Esok Hari', created_by: 'stocking@sppg.com' },
-        { id: 'stok-2', item_name: 'Bawang Merah Kupas', category: 'Bumbu Dapur', quantity: '12.0 Kg', condition: 'Kering, Bagus', action_plan: 'Gunakan untuk Stocking Persiapan', created_by: 'prep@sppg.com' },
-        { id: 'stok-3', item_name: 'Timun Lokal', category: 'Sayur Segar', quantity: '3.5 Kg', condition: 'Segar', action_plan: 'Garnish/Lalapan Makan Malam', created_by: 'stocking@sppg.com' },
-        { id: 'stok-4', item_name: 'Tempe Blok Premium', category: 'Lauk Nabati', quantity: '8 Batang', condition: 'Sangat Segar', action_plan: 'Goreng Crispy Sore Ini', created_by: 'masak@sppg.com' },
-        { id: 'stok-5', item_name: 'Cabai Rawit Merah sisa', category: 'Bumbu Dapur', quantity: '2.1 Kg', condition: 'Sedikit Layu', action_plan: 'Langsung blender bumbu halus', created_by: 'stocking@sppg.com' }
-      ];
-      safeLocalStorageSetItem('sppg_sisa_stok', JSON.stringify(defaults));
-      setStokSisa(defaults);
-    }
+    setStokSisa([]);
   };
 
   const loadOrdersFromLocal = () => {
-    const raw = safeLocalStorageGetItem('sppg_order_requests');
-    if (raw) {
-      setOrderRequests(JSON.parse(raw));
-    } else {
-      const defaults: OrderRequestItem[] = [
-        { id: 'o-1', item_name: 'Blender Komersial Heavy Duty 3HP', qty: '1 Unit', reason: 'Blender utama mati total karena korsleting listrik semalam. Sangat mendesak untuk bumbu santri 450 porsi.', category: 'alat', status: 'pending', created_by: 'persiapan@sppg.com', created_at: new Date(Date.now() - 3600000 * 2).toISOString() },
-        { id: 'o-2', item_name: 'Sabun Cuci Piring Jerigen 20L', qty: '3 Jerigen', reason: 'Stok sabun cuci ompreng menipis sisa 1 jerigen kecil. Cukup untuk 2 hari kedepan.', category: 'operasional', status: 'disetujui', created_by: 'cuci@sppg.com', created_at: new Date(Date.now() - 3600000 * 24).toISOString(), notes: 'Sudah di-order ke Supplier Barokah' },
-        { id: 'o-3', item_name: 'Tabung Gas LPG 50 Kg', qty: '2 Tabung', reason: 'Cadangan bahan bakar untuk masak gulai bandeng menu hari kamis.', category: 'operasional', status: 'pending', created_by: 'masak@sppg.com', created_at: new Date(Date.now() - 3600000 * 12).toISOString() }
-      ];
-      safeLocalStorageSetItem('sppg_order_requests', JSON.stringify(defaults));
-      setOrderRequests(defaults);
-    }
+    setOrderRequests([]);
   };
 
   const loadKeluhanFromLocal = () => {
-    const raw = safeLocalStorageGetItem('sppg_volunteer_complaints');
-    if (raw) {
-      setKeluhanList(JSON.parse(raw));
-    } else {
-      const defaults: VolunteerComplaintItem[] = [
-        { id: 'k-1', source: 'Ustadz Jauhari (Dorm Putra C)', category: 'Kekurangan Porsi Jumlah', complaint_text: 'Jumlah ompreng datang kurang 3 pack dibanding daftar santri absen malam ini.', action_taken: 'Diselesaikan: Driver langsung kirim susulan 3 porsi dari dapur cadangan.', status: 'selesai', created_by: 'driver@sppg.com', created_at: new Date(Date.now() - 3600000 * 4).toISOString() },
-        { id: 'k-2', source: 'Wali Kamar Asrama Putri 4', category: 'Rasa / Suhu Makanan', complaint_text: 'Sayur bobor bayam yang tiba untuk sarapan terasa terlalu hambar dan dingin.', action_taken: 'Investigasi: Tim masak dievaluasi agar menakar garam presisi.', status: 'selesai', created_by: 'masak@sppg.com', created_at: new Date(Date.now() - 3600000 * 30).toISOString() },
-        { id: 'k-3', source: 'Ustadzah Aminah (Asrama Putri C)', category: 'Keterlanjuran / Keterlambatan Kirim', complaint_text: 'Distribusi sarapan pagi ini terlambat 25 menit. Santri terburu-buru sekolah.', action_taken: 'Dalam investigasi: Penyebab keterlambatan mobil operasional slip kopling sedang diperiksa mekanik.', status: 'pending', created_by: 'driver@sppg.com', created_at: new Date(Date.now() - 3600000 * 8).toISOString() }
-      ];
-      safeLocalStorageSetItem('sppg_volunteer_complaints', JSON.stringify(defaults));
-      setKeluhanList(defaults);
-    }
+    setKeluhanList([]);
   };
 
   const fetchDatabaseData = async () => {
@@ -2754,11 +2677,11 @@ export default function MockModules({
         try {
           const targetDate = selectedDate || '2026-06-16';
 
-          const [shipRes, bastRes, sjRes, orlepRes] = await Promise.allSettled([
-            supabase.from('shipping_docs').select('*').eq('date', targetDate),
-            supabase.from('bast_docs').select('*').eq('date', targetDate),
-            supabase.from('surat_jalan_docs').select('*').eq('date', targetDate),
-            supabase.from('organoleptik_docs').select('*').eq('date', targetDate)
+const [shipRes, bastRes, sjRes, orlepRes] = await Promise.allSettled([
+            supabase.from('shipping_docs').select('*').order('date', { ascending: false }).limit(500),
+            supabase.from('bast_docs').select('*').order('date', { ascending: false }).limit(500),
+            supabase.from('surat_jalan_docs').select('*').order('date', { ascending: false }).limit(500),
+            supabase.from('organoleptik_docs').select('*').order('date', { ascending: false }).limit(500)
           ]);
 
           const combinedMap = new Map<string, any>();
@@ -2877,6 +2800,32 @@ export default function MockModules({
           setRawShippingDocs(allFetched);
         } catch (err) {
           console.warn("Failed fetching documents:", err);
+        }
+
+
+        // Fetch Stock Opname Docs, Stok Operasional Docs, Trash Items
+        try {
+          const [soRes, opRes, trashRes] = await Promise.allSettled([
+            supabase.from('stock_opname_docs').select('*'),
+            supabase.from('stok_operasional_docs').select('*'),
+            supabase.from('rekap_sampah_docs').select('*').eq('id', 'global').maybeSingle()
+          ]);
+          
+          if (soRes.status === 'fulfilled' && soRes.value.data) {
+             const map: Record<string, StockItem[]> = {};
+             soRes.value.data.forEach(d => { map[d.date] = d.items; });
+             setRawStockMap(map);
+          }
+          if (opRes.status === 'fulfilled' && opRes.value.data) {
+             const map: Record<string, StockItem[]> = {};
+             opRes.value.data.forEach(d => { map[d.date] = d.items; });
+             setRawOperasionalMap(map);
+          }
+          if (trashRes.status === 'fulfilled' && trashRes.value.data) {
+             setRawTrashItems(trashRes.value.data.items || []);
+          }
+        } catch (e) {
+          console.warn('Error fetching new docs:', e);
         }
 
         // Fetch Kedatangan Barang - Filtered by selectedDate
@@ -5374,7 +5323,10 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
     case 22: {
       return (
         <PortionMasterView
-          selectedDate={selectedDate || '2026-06-16'}
+          selectedDate={selectedDate || '2026-08-04'}
+          allDayMenus={allDayMenus}
+          shippingDocs={shippingDocs}
+          setShippingDocs={setRawShippingDocs}
         />
       );
     }

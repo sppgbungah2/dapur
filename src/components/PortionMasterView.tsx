@@ -1,569 +1,415 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, Calendar, Save, CheckCircle2, AlertCircle, RefreshCw, 
-  School, Home, Sparkles, BarChart2, Check, Trash2, Edit, Search, Plus, ArrowRight
-} from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { safeLocalStorageSetItem, safeLocalStorageGetItem } from '../lib/storage';
-
-interface PortionMasterViewProps {
-  selectedDate: string;
-}
+import { DayMenu } from '../types';
+import { Save, Loader2, Utensils, Users, CheckCircle, AlertTriangle, Calendar, Layers } from 'lucide-react';
+import { updateExistingDocsWithPortions } from '../utils/generateDocs';
 
 export interface PortionConfig {
-  MA: { guru: number; siswa: number };
-  "MTS II": { guru: number; siswa: number };
-  SMK: { guru: number; siswa: number };
-  SMA: { guru: number; siswa: number };
-  Sukowati: { besar: number; kecil: number };
-  Sidokumpul: { besar: number; kecil: number };
+  MA?: { siswa: number; guru: number };
+  "MTS II"?: { siswa: number; guru: number };
+  SMK?: { siswa: number; guru: number };
+  SMA?: { siswa: number; guru: number };
+  Sukowati?: { besar: number; kecil: number };
+  Sidokumpul?: { besar: number; kecil: number };
 }
 
 export const DEFAULT_PORTIONS: PortionConfig = {
-  MA: { guru: 48, siswa: 207 },
-  "MTS II": { guru: 45, siswa: 518 },
-  SMK: { guru: 55, siswa: 567 },
-  SMA: { guru: 50, siswa: 861 },
-  Sukowati: { besar: 80, kecil: 40 },
-  Sidokumpul: { besar: 95, kecil: 45 }
+  MA: { siswa: 0, guru: 0 },
+  "MTS II": { siswa: 0, guru: 0 },
+  SMK: { siswa: 0, guru: 0 },
+  SMA: { siswa: 0, guru: 0 },
+  Sukowati: { besar: 0, kecil: 0 },
+  Sidokumpul: { besar: 0, kecil: 0 }
 };
 
-export default function PortionMasterView({ selectedDate }: PortionMasterViewProps) {
-  const [portions, setPortions] = useState<PortionConfig>({ ...DEFAULT_PORTIONS });
-  const [loading, setLoading] = useState<boolean>(false);
-  const [saving, setSaving] = useState<boolean>(false);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+interface PortionMasterViewProps {
+  selectedDate: string;
+  allDayMenus?: DayMenu[];
+  shippingDocs?: any[];
+  setShippingDocs?: React.Dispatch<React.SetStateAction<any[]>>;
+  onSelectDate?: (date: string) => void;
+}
 
-  // Mode selection state: 'harian' (current active app date) or 'selanjutnya' (future / custom date)
-  const [mode, setMode] = useState<'harian' | 'selanjutnya'>('harian');
-  const [activeDate, setActiveDate] = useState<string>(selectedDate);
-  const [allSavedPortions, setAllSavedPortions] = useState<Array<{ date: string; portions: PortionConfig; origin: 'cloud' | 'local' }>>([]);
-  const [searchQuery, setSearchQuery] = useState<string>('');
+export interface MasterPortionItem {
+  date: string;
+  portions: PortionConfig;
+  updated_at?: string;
+}
 
-  // Helpers to calculate tomorrow and lusa
-  const getNextDateStr = (daysAhead: number) => {
+export default function PortionMasterView({
+  selectedDate,
+  allDayMenus = [],
+  shippingDocs = [],
+  setShippingDocs,
+  onSelectDate
+}: PortionMasterViewProps) {
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  const [menuText, setMenuText] = useState('');
+  const [portions, setPortions] = useState<PortionConfig>(DEFAULT_PORTIONS);
+  const [allMasterPortions, setAllMasterPortions] = useState<MasterPortionItem[]>([]);
+
+  useEffect(() => {
+    fetchData();
+    fetchAllMasterPortions();
+  }, [selectedDate]);
+
+  const fetchAllMasterPortions = async () => {
+    if (!isSupabaseConfigured || !supabase) return;
     try {
-      const base = new Date(selectedDate || '2026-07-17');
-      base.setDate(base.getDate() + daysAhead);
-      return base.toISOString().split('T')[0];
-    } catch (e) {
-      return '';
+      const { data } = await supabase
+        .from('master_porsi')
+        .select('*')
+        .order('date', { ascending: true });
+      if (data) {
+        setAllMasterPortions(data as MasterPortionItem[]);
+      }
+    } catch (err) {
+      console.warn("Could not fetch all master portions:", err);
     }
   };
 
-  // Synchronize activeDate when main app's selectedDate changes, only if we are in 'harian' mode
-  useEffect(() => {
-    if (mode === 'harian') {
-      setActiveDate(selectedDate);
+  const fetchData = async () => {
+    if (!isSupabaseConfigured || !supabase) {
+      setMessage({ type: 'error', text: 'Supabase belum dikonfigurasi!' });
+      return;
     }
-  }, [selectedDate, mode]);
-
-  // Load portions whenever the activeDate changes
-  useEffect(() => {
-    loadPortions();
-  }, [activeDate]);
-
-  // Initial load of all saved portions list
-  useEffect(() => {
-    loadAllPortions();
-  }, [activeDate]);
-
-  // Load portions for the specific active date with global template fallback
-  const loadPortions = async () => {
     setLoading(true);
-    setErrorMsg(null);
     try {
-      if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase
-          .from('master_porsi')
-          .select('*')
-          .eq('date', activeDate)
-          .maybeSingle();
+      // Fetch Menu
+      const { data: menuData } = await supabase
+        .from('day_menus')
+        .select('*')
+        .eq('date', selectedDate)
+        .maybeSingle();
 
-        if (error) {
-          console.warn("Could not load master_porsi from Supabase (using local cache):", error);
-          loadFromLocal();
-        } else if (data && data.portions) {
-          setPortions(data.portions as PortionConfig);
-        } else {
-          // No record exists for this specific date, try master template in cloud
-          const { data: tplData } = await supabase
-            .from('master_porsi')
-            .select('*')
-            .eq('date', '1970-01-01')
-            .maybeSingle();
-
-          if (tplData && tplData.portions) {
-            setPortions(tplData.portions as PortionConfig);
-          } else {
-            loadFromLocal();
-          }
-        }
+      if (menuData && menuData.menu_list) {
+        setMenuText(menuData.menu_list.join('\n'));
       } else {
-        loadFromLocal();
+        const foundLocal = allDayMenus.find(m => m.date === selectedDate);
+        if (foundLocal) {
+          setMenuText(foundLocal.menuList.join('\n'));
+        } else {
+          setMenuText('');
+        }
+      }
+
+      // Fetch Portions
+      const { data: porsiData } = await supabase
+        .from('master_porsi')
+        .select('portions')
+        .eq('date', selectedDate)
+        .maybeSingle();
+
+      if (porsiData && porsiData.portions) {
+        setPortions(porsiData.portions as PortionConfig);
+      } else {
+        setPortions(DEFAULT_PORTIONS);
       }
     } catch (err: any) {
-      console.warn("Could not retrieve loadPortions:", err);
-      loadFromLocal();
+      console.error(err);
+      setMessage({ type: 'error', text: 'Gagal mengambil data dari server.' });
     } finally {
       setLoading(false);
     }
   };
 
-  const loadFromLocal = () => {
-    const key = `sppg_portions_${activeDate}`;
-    const saved = localStorage.getItem(key);
-    if (saved) {
-      try {
-        setPortions(JSON.parse(saved));
-        return;
-      } catch (e) {
-        console.warn('Error parsing local portions:', e);
-      }
-    }
-
-    // Try global master default template set by admin
-    const globalDefault = localStorage.getItem('sppg_global_master_portions');
-    if (globalDefault) {
-      try {
-        setPortions(JSON.parse(globalDefault));
-        return;
-      } catch (e) {
-        console.warn('Error parsing global master portions:', e);
-      }
-    }
-
-    setPortions({ ...DEFAULT_PORTIONS });
-  };
-
-  // Load all portions saved in the database & local storage to render the deck cards list
-  const loadAllPortions = async () => {
-    let cloudList: Array<{ date: string; portions: PortionConfig; origin: 'cloud' }> = [];
-    
-    // 1. Fetch from cloud
-    try {
-      if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase
-          .from('master_porsi')
-          .select('*')
-          .order('date', { ascending: false });
-        
-        if (error) {
-          console.warn("Could not load master_porsi list from cloud:", error);
-        } else if (data) {
-          cloudList = data.map((item: any) => ({
-            date: item.date,
-            portions: item.portions as PortionConfig,
-            origin: 'cloud' as const
-          }));
-        }
-      }
-    } catch (err) {
-      console.warn("Could not loadAllPortions from cloud:", err);
-    }
-
-    // 2. Fetch from localStorage keys
-    const localList: Array<{ date: string; portions: PortionConfig; origin: 'local' }> = [];
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('sppg_portions_')) {
-          const dateStr = key.replace('sppg_portions_', '');
-          const savedStr = localStorage.getItem(key);
-          if (savedStr) {
-            const parsed = JSON.parse(savedStr);
-            localList.push({
-              date: dateStr,
-              portions: parsed as PortionConfig,
-              origin: 'local' as const
-            });
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("Could not read local storage portions:", e);
-    }
-
-    // Merge list, cloud overrides/takes precedence over local cache duplicates
-    const mergedMap = new Map<string, { date: string; portions: PortionConfig; origin: 'cloud' | 'local' }>();
-    localList.forEach(item => {
-      mergedMap.set(item.date, item);
-    });
-    cloudList.forEach(item => {
-      mergedMap.set(item.date, item);
-    });
-
-    const sorted = Array.from(mergedMap.values()).sort((a, b) => b.date.localeCompare(a.date));
-    setAllSavedPortions(sorted);
-  };
-
-  const handleInputChange = (
-    recipient: keyof PortionConfig,
-    field: 'guru' | 'siswa' | 'besar' | 'kecil',
-    value: string
-  ) => {
-    const num = parseInt(value) || 0;
-    setPortions(prev => {
-      const updatedRecipient = { ...prev[recipient] } as any;
-      updatedRecipient[field] = num;
-      return {
-        ...prev,
-        [recipient]: updatedRecipient
-      };
-    });
+  const calculateTotalPM = (p: PortionConfig) => {
+    if (!p) return 0;
+    const ma = (p.MA?.guru || 0) + (p.MA?.siswa || 0);
+    const mts = (p["MTS II"]?.guru || 0) + (p["MTS II"]?.siswa || 0);
+    const smk = (p.SMK?.guru || 0) + (p.SMK?.siswa || 0);
+    const sma = (p.SMA?.guru || 0) + (p.SMA?.siswa || 0);
+    const suko = (p.Sukowati?.besar || 0) + (p.Sukowati?.kecil || 0);
+    const sido = (p.Sidokumpul?.besar || 0) + (p.Sidokumpul?.kecil || 0);
+    return ma + mts + smk + sma + suko + sido;
   };
 
   const handleSave = async () => {
+    if (!isSupabaseConfigured || !supabase) return;
     setSaving(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    
-    // Save to local storage cache for active date AND as global master template
-    const key = `sppg_portions_${activeDate}`;
-    safeLocalStorageSetItem(key, JSON.stringify(portions));
-    safeLocalStorageSetItem('sppg_global_master_portions', JSON.stringify(portions));
-
+    setMessage(null);
     try {
-      if (isSupabaseConfigured && supabase) {
-        const payload = {
-          date: activeDate,
-          portions: portions,
-          created_by: 'admin@qomaruddin.com',
-          created_at: new Date().toISOString()
-        };
-
-        const templatePayload = {
-          date: '1970-01-01',
-          portions: portions,
-          created_by: 'admin@qomaruddin.com',
-          created_at: new Date().toISOString()
-        };
-
-        const { error } = await supabase
-          .from('master_porsi')
-          .upsert([payload, templatePayload]);
-
-        if (error) {
-          throw error;
-        }
-        
-        // Fire storage or window event to let other open views sync
-        window.dispatchEvent(new Event('portionsUpdated'));
-
-        setSuccessMsg(`Berhasil menyimpan & menetapkan master porsi permanen untuk tanggal ${activeDate} dan seluruh hari mendatang!`);
-      } else {
-        window.dispatchEvent(new Event('portionsUpdated'));
-        setSuccessMsg(`Berhasil menyimpan & menetapkan master porsi permanen secara lokal (Offline mode).`);
-      }
+      const menuList = menuText.split('\n').map(m => m.trim()).filter(m => m !== '');
       
-      // Reload both list and current selection
-      await loadAllPortions();
-      setTimeout(() => setSuccessMsg(null), 4000);
+      // Upsert Menu
+      if (menuList.length > 0) {
+        await supabase.from('day_menus').upsert({
+          date: selectedDate,
+          menu_list: menuList,
+          created_by: 'Admin',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'date' });
+      } else {
+        await supabase.from('day_menus').delete().eq('date', selectedDate);
+      }
+
+      // Upsert Portions
+      await supabase.from('master_porsi').upsert({
+        date: selectedDate,
+        portions: portions,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'date' });
+
+      // Automatically update Surat Jalan & BAST documents if they exist for selectedDate
+      if (setShippingDocs && shippingDocs.length > 0) {
+        const updatedDocs = updateExistingDocsWithPortions(shippingDocs, selectedDate, portions);
+        setShippingDocs(updatedDocs);
+      }
+
+      setMessage({ type: 'success', text: `Berhasil menyimpan & memperbarui Surat Jalan/BAST untuk tanggal ${selectedDate}` });
+      fetchAllMasterPortions();
+      setTimeout(() => setMessage(null), 3000);
     } catch (err: any) {
-      console.warn("Could not save master_porsi to Supabase:", err);
-      setErrorMsg("Gagal menyimpan ke cloud: " + (err.message || err));
+      console.error(err);
+      setMessage({ type: 'error', text: 'Terjadi kesalahan saat menyimpan data.' });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeletePortion = async (dateToDelete: string) => {
-    if (!window.confirm(`Apakah Anda yakin ingin menghapus konfigurasi porsi untuk tanggal ${dateToDelete}?`)) {
-      return;
-    }
 
-    try {
-      localStorage.removeItem(`sppg_portions_${dateToDelete}`);
-
-      if (isSupabaseConfigured && supabase) {
-        const { error } = await supabase
-          .from('master_porsi')
-          .delete()
-          .eq('date', dateToDelete);
-
-        if (error) throw error;
+  const handlePortionChange = (school: keyof PortionConfig, type: string, value: string) => {
+    const num = parseInt(value) || 0;
+    setPortions(prev => ({
+      ...prev,
+      [school]: {
+        ...(prev[school] as any),
+        [type]: num
       }
-
-      setSuccessMsg(`Data porsi untuk tanggal ${dateToDelete} berhasil dihapus.`);
-      setTimeout(() => setSuccessMsg(null), 3000);
-      
-      // Sync list
-      await loadAllPortions();
-      
-      // If deleted activeDate, refresh it
-      if (activeDate === dateToDelete) {
-        loadPortions();
-      }
-    } catch (err: any) {
-      console.warn("Could not delete portion:", err);
-      setErrorMsg("Gagal menghapus data: " + (err.message || err));
-    }
+    }));
   };
-
-  const handleLoadSavedToForm = (dateStr: string) => {
-    setMode('selanjutnya');
-    setActiveDate(dateStr);
-    
-    // Scroll smoothly to form
-    const elem = document.getElementById('master-portions-form-container');
-    if (elem) {
-      elem.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
-
-  // Helper calculation values for visualization
-  const getSchoolTotal = (school: 'MA' | 'MTS II' | 'SMK' | 'SMA') => {
-    return (portions[school]?.guru || 0) + (portions[school]?.siswa || 0);
-  };
-
-  const getVillageTotal = (village: 'Sukowati' | 'Sidokumpul') => {
-    return (portions[village]?.besar || 0) + (portions[village]?.kecil || 0);
-  };
-
-  const getOverallTotal = () => {
-    return (
-      getSchoolTotal('MA') +
-      getSchoolTotal('MTS II') +
-      getSchoolTotal('SMK') +
-      getSchoolTotal('SMA') +
-      getVillageTotal('Sukowati') +
-      getVillageTotal('Sidokumpul')
-    );
-  };
-
-  const getSchoolGrandTotal = () => {
-    return getSchoolTotal('MA') + getSchoolTotal('MTS II') + getSchoolTotal('SMK') + getSchoolTotal('SMA');
-  };
-
-  const getVillageGrandTotal = () => {
-    return getVillageTotal('Sukowati') + getVillageTotal('Sidokumpul');
-  };
-
-  const formattedDate = (dateStr: string = activeDate) => {
-    const parts = dateStr.split('-');
-    if (parts.length === 3) {
-      return `${parts[2]}/${parts[1]}/${parts[0]}`;
-    }
-    return dateStr;
-  };
-
-  // Format full date label in Indonesian for cards
-  const formatIndonesianDate = (dateStr: string) => {
-    try {
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return dateStr;
-      
-      const weekdays = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-      const months = [
-        'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
-        'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
-      ];
-      
-      const dayName = weekdays[date.getDay()];
-      const day = date.getDate();
-      const monthName = months[date.getMonth()];
-      const year = date.getFullYear();
-      
-      return `${dayName}, ${day} ${monthName} ${year}`;
-    } catch (e) {
-      return dateStr;
-    }
-  };
-
-  // Filter saved list based on query
-  const filteredSavedPortions = allSavedPortions.filter(item => {
-    const dStr = item.date.toLowerCase();
-    const friendlyStr = formatIndonesianDate(item.date).toLowerCase();
-    return dStr.includes(searchQuery.toLowerCase()) || friendlyStr.includes(searchQuery.toLowerCase());
-  });
 
   return (
-    <div className="space-y-6 animate-fade-in" id="master-portions-panel">
-      
-      {/* 1. Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-100 pb-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-extrabold font-sans text-neutral-900 flex items-center gap-2 tracking-tight">
-              <Users className="h-6 w-6 text-emerald-800 shrink-0" />
-              Master Database Jumlah Porsi Harian
+    <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
+      <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-neutral-200">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div>
+            <h2 className="text-xl md:text-2xl font-black text-neutral-900 tracking-tight flex items-center gap-2">
+              <Utensils className="w-6 h-6 text-emerald-600" />
+              Set Master Menu & Porsi (PM)
             </h2>
-            <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider font-extrabold px-2 py-0.5 rounded-full">
-              Sistem Otomatisasi
-            </span>
-          </div>
-          <p className="text-xs text-neutral-500">
-            Mengatur jumlah porsi siswa/guru dan warga desa untuk mengisi otomatis Surat Jalan &amp; BAST secara sinkron.
-          </p>
-        </div>
-
-
-      </div>
-
-      {/* Messages */}
-      {successMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl text-xs font-semibold flex items-center gap-2 animate-fade-in">
-          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
-          {successMsg}
-        </div>
-      )}
-
-      {errorMsg && (
-        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl text-xs font-semibold flex items-center gap-2 animate-fade-in">
-          <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
-          {errorMsg}
-        </div>
-      )}{/* 5. CARDS DECK: DAFTAR PORSI (NEW REQUIREMENT) */}
-      <div className="bg-white p-6 rounded-2xl border border-neutral-150 shadow-3xs space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-100 pb-4">
-          <div className="space-y-1">
-            <h3 className="font-bold text-sm text-neutral-900 flex items-center gap-2">
-              <BarChart2 className="h-5 w-5 text-emerald-800" />
-              Daftar Rekapitulasi Porsi yang Terdaftar
-            </h3>
-            <p className="text-xs text-neutral-500">
-              Menampilkan seluruh konfigurasi porsi yang telah disimpan baik di cloud maupun cache lokal untuk berbagai tanggal.
+            <p className="text-sm text-neutral-500 mt-1">
+              Atur Menu Harian dan Jumlah Porsi (Siswa/Guru) untuk tanggal <strong>{selectedDate}</strong>
             </p>
           </div>
-
-          {/* Search bar input */}
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-400" />
-            <input
-              type="text"
-              placeholder="Cari tanggal (Contoh: 2026-07)..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full text-xs pl-9 pr-4 py-2 bg-neutral-50 hover:bg-neutral-100/70 border border-neutral-250 rounded-xl focus:bg-white focus:ring-1 focus:ring-emerald-700 focus:border-emerald-700 outline-hidden"
-            />
-          </div>
+          <button
+            onClick={handleSave}
+            disabled={loading || saving}
+            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2.5 px-6 rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+          >
+            {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+            {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
+          </button>
         </div>
 
-        {filteredSavedPortions.length === 0 ? (
-          <div className="text-center py-10 border border-dashed border-neutral-200 rounded-xl bg-neutral-50/50">
-            <Calendar className="h-8 w-8 text-neutral-300 mx-auto mb-2" />
-            <p className="text-xs font-semibold text-neutral-500">Tidak ada konfigurasi porsi yang ditemukan.</p>
-            <p className="text-[10px] text-neutral-400 mt-1">Silakan simpan konfigurasi di atas untuk membuat porsi baru.</p>
+        {message && (
+          <div className={`p-4 rounded-xl mb-6 flex items-center gap-3 text-sm font-bold ${
+            message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+          }`}>
+            {message.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+            {message.text}
+          </div>
+        )}
+
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredSavedPortions.map((item) => {
-              const p = item.portions;
-              const schoolSum = 
-                ((p.MA?.siswa || 0) + (p.MA?.guru || 0)) + 
-                ((p["MTS II"]?.siswa || 0) + (p["MTS II"]?.guru || 0)) +
-                ((p.SMK?.siswa || 0) + (p.SMK?.guru || 0)) +
-                ((p.SMA?.siswa || 0) + (p.SMA?.guru || 0));
-              const villageSum = 
-                ((p.Sukowati?.besar || 0) + (p.Sukowati?.kecil || 0)) +
-                ((p.Sidokumpul?.besar || 0) + (p.Sidokumpul?.kecil || 0));
-              const grandSum = schoolSum + villageSum;
-              const isActive = item.date === activeDate;
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Menu Section */}
+            <div className="lg:col-span-1 space-y-4">
+              <div className="bg-neutral-50 rounded-2xl p-5 border border-neutral-200 h-full">
+                <h3 className="font-bold text-neutral-800 mb-4 flex items-center gap-2">
+                  <Utensils className="w-5 h-5 text-neutral-400" />
+                  Menu Harian
+                </h3>
+                <textarea
+                  value={menuText}
+                  onChange={e => setMenuText(e.target.value)}
+                  placeholder="Ketik menu harian di sini... (satu menu per baris)"
+                  className="w-full h-64 bg-white border border-neutral-300 rounded-xl p-3 text-sm focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"
+                />
+                <p className="text-xs text-neutral-500 mt-3">
+                  Pisahkan setiap menu dengan baris baru (Enter). Menu ini akan muncul di form Organoleptik dan Daftar Rekapitulasi.
+                </p>
+              </div>
+            </div>
 
-              return (
-                <div 
-                  key={item.date} 
-                  className={`p-5 rounded-2xl border transition-all flex flex-col justify-between space-y-4 shadow-3xs ${
-                    isActive 
-                      ? 'border-emerald-700 bg-emerald-50/20 ring-1 ring-emerald-700' 
-                      : 'border-neutral-200 hover:border-neutral-300 bg-white'
-                  }`}
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono font-bold text-neutral-400 tracking-wider">
-                        {item.date}
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        {item.origin === 'cloud' ? (
-                          <span className="text-[8px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-250 px-1.5 py-0.5 rounded uppercase">
-                            Cloud
-                          </span>
-                        ) : (
-                          <span className="text-[8px] font-extrabold bg-blue-100 text-blue-800 border border-blue-250 px-1.5 py-0.5 rounded uppercase">
-                            Local Cache
-                          </span>
-                        )}
-                        {isActive && (
-                          <span className="text-[8px] font-extrabold bg-amber-100 text-amber-800 border border-amber-250 px-1.5 py-0.5 rounded uppercase">
-                            Aktif
-                          </span>
-                        )}
+            {/* Portions Section */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-neutral-50 rounded-2xl p-5 border border-neutral-200">
+                <h3 className="font-bold text-neutral-800 mb-4 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-neutral-400" />
+                  Jumlah Porsi (Portion Master)
+                </h3>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* MA */}
+                  <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+                    <h4 className="font-black text-sm text-neutral-800 mb-3 border-b pb-2">MA</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Siswa</label>
+                        <input type="number" min="0" value={portions.MA?.siswa || 0} onChange={e => handlePortionChange('MA', 'siswa', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
                       </div>
-                    </div>
-
-                    <h4 className="font-extrabold text-xs text-neutral-800 font-sans">
-                      {formatIndonesianDate(item.date)}
-                    </h4>
-
-                    {/* Quick Stats list */}
-                    <div className="pt-2 border-t border-neutral-100/80 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-neutral-500 text-[11px] font-medium">Sektor Sekolah:</span>
-                        <span className="text-neutral-800 text-[11px] font-bold font-mono">{schoolSum} Box</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-neutral-500 text-[11px] font-medium">Sektor Penerima Desa:</span>
-                        <span className="text-neutral-800 text-[11px] font-bold font-mono">{villageSum} Box</span>
-                      </div>
-                      <div className="flex items-center justify-between pt-1 border-t border-dashed border-neutral-150">
-                        <span className="text-neutral-900 text-[11px] font-extrabold">Total Akumulasi:</span>
-                        <span className="text-emerald-800 text-[11px] font-black font-mono">{grandSum} Box</span>
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Guru</label>
+                        <input type="number" min="0" value={portions.MA?.guru || 0} onChange={e => handlePortionChange('MA', 'guru', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
                       </div>
                     </div>
                   </div>
 
-                  {/* Actions Row */}
-                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100/80">
-                    <button
-                      type="button"
-                      onClick={() => handleLoadSavedToForm(item.date)}
-                      className="text-[10px] font-bold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-emerald-100 hover:bg-emerald-50 transition-colors cursor-pointer"
-                    >
-                      <Edit className="h-3.5 w-3.5" />
-                      Gunakan / Edit
-                    </button>
-                    
-                    <button
-                      type="button"
-                      onClick={() => handleDeletePortion(item.date)}
-                      className="text-[10px] font-bold text-red-600 hover:text-red-800 flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-100 hover:bg-red-50 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Hapus
-                    </button>
+                  {/* MTS II */}
+                  <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+                    <h4 className="font-black text-sm text-neutral-800 mb-3 border-b pb-2">MTS II</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Siswa</label>
+                        <input type="number" min="0" value={portions['MTS II']?.siswa || 0} onChange={e => handlePortionChange('MTS II', 'siswa', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Guru</label>
+                        <input type="number" min="0" value={portions['MTS II']?.guru || 0} onChange={e => handlePortionChange('MTS II', 'guru', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SMK */}
+                  <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+                    <h4 className="font-black text-sm text-neutral-800 mb-3 border-b pb-2">SMK</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Siswa</label>
+                        <input type="number" min="0" value={portions.SMK?.siswa || 0} onChange={e => handlePortionChange('SMK', 'siswa', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Guru</label>
+                        <input type="number" min="0" value={portions.SMK?.guru || 0} onChange={e => handlePortionChange('SMK', 'guru', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SMA */}
+                  <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+                    <h4 className="font-black text-sm text-neutral-800 mb-3 border-b pb-2">SMA</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Siswa</label>
+                        <input type="number" min="0" value={portions.SMA?.siswa || 0} onChange={e => handlePortionChange('SMA', 'siswa', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Guru</label>
+                        <input type="number" min="0" value={portions.SMA?.guru || 0} onChange={e => handlePortionChange('SMA', 'guru', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sukowati */}
+                  <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+                    <h4 className="font-black text-sm text-neutral-800 mb-3 border-b pb-2">Ompreng Sukowati</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Ompreng Besar</label>
+                        <input type="number" min="0" value={portions.Sukowati?.besar || 0} onChange={e => handlePortionChange('Sukowati', 'besar', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Ompreng Kecil</label>
+                        <input type="number" min="0" value={portions.Sukowati?.kecil || 0} onChange={e => handlePortionChange('Sukowati', 'kecil', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sidokumpul */}
+                  <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+                    <h4 className="font-black text-sm text-neutral-800 mb-3 border-b pb-2">Ompreng Sidokumpul</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Ompreng Besar</label>
+                        <input type="number" min="0" value={portions.Sidokumpul?.besar || 0} onChange={e => handlePortionChange('Sidokumpul', 'besar', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-neutral-500 mb-1 block">Ompreng Kecil</label>
+                        <input type="number" min="0" value={portions.Sidokumpul?.kecil || 0} onChange={e => handlePortionChange('Sidokumpul', 'kecil', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Grid Listing of Real Master Portions in Database */}
+      <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-neutral-200 space-y-4">
+        <div className="flex items-center justify-between border-b pb-3 border-neutral-100">
+          <h3 className="font-bold text-neutral-800 text-xs uppercase tracking-wider font-mono flex items-center gap-2">
+            <Layers className="w-4 h-4 text-emerald-600" />
+            📚 DAFTAR MASTER PORSI (PM) SAAT INI DI DATABASE ({allMasterPortions.length} Hari Terbit)
+          </h3>
+        </div>
+
+        {allMasterPortions.length === 0 ? (
+          <div className="p-8 text-center text-neutral-400 text-xs italic bg-neutral-50 rounded-2xl border border-dashed border-neutral-200">
+            Belum ada rekam porsi tersimpan di cloud database. Simpan form di atas untuk menerbitkan porsi tanggal {selectedDate}.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            {allMasterPortions.map((mpItem) => {
+              const totalPm = calculateTotalPM(mpItem.portions);
+              const isSelected = mpItem.date === selectedDate;
+              return (
+                <div
+                  key={mpItem.date}
+                  onClick={() => onSelectDate && onSelectDate(mpItem.date)}
+                  className={`border p-4 rounded-2xl shadow-xs flex flex-col justify-between transition-all cursor-pointer relative ${
+                    isSelected
+                      ? 'bg-emerald-50/50 border-emerald-600 ring-2 ring-emerald-500/20'
+                      : 'bg-white border-neutral-200 hover:border-emerald-500 hover:shadow-md'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-xs text-neutral-900 font-mono">
+                        📅 {mpItem.date}
+                      </span>
+                      {isSelected && (
+                        <span className="text-[9px] bg-emerald-600 text-white font-extrabold px-2 py-0.5 rounded-full uppercase">
+                          Aktif
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="my-3 bg-neutral-50 p-2.5 rounded-xl border border-neutral-100">
+                      <span className="text-[10px] text-neutral-500 uppercase tracking-wide block font-semibold">Total Porsi PM</span>
+                      <span className="text-lg font-black text-emerald-700">{totalPm} <span className="text-xs font-bold text-neutral-600">Porsi</span></span>
+                    </div>
+
+                    <div className="space-y-1 text-[11px] text-neutral-600 font-sans">
+                      <div className="flex justify-between"><span>MA:</span><strong className="text-neutral-800">{(mpItem.portions?.MA?.siswa||0)+(mpItem.portions?.MA?.guru||0)}</strong></div>
+                      <div className="flex justify-between"><span>MTS II:</span><strong className="text-neutral-800">{(mpItem.portions?.['MTS II']?.siswa||0)+(mpItem.portions?.['MTS II']?.guru||0)}</strong></div>
+                      <div className="flex justify-between"><span>SMK:</span><strong className="text-neutral-800">{(mpItem.portions?.SMK?.siswa||0)+(mpItem.portions?.SMK?.guru||0)}</strong></div>
+                      <div className="flex justify-between"><span>SMA:</span><strong className="text-neutral-800">{(mpItem.portions?.SMA?.siswa||0)+(mpItem.portions?.SMA?.guru||0)}</strong></div>
+                      <div className="flex justify-between"><span>Sukowati:</span><strong className="text-neutral-800">{(mpItem.portions?.Sukowati?.besar||0)+(mpItem.portions?.Sukowati?.kecil||0)}</strong></div>
+                      <div className="flex justify-between"><span>Sidokumpul:</span><strong className="text-neutral-800">{(mpItem.portions?.Sidokumpul?.besar||0)+(mpItem.portions?.Sidokumpul?.kecil||0)}</strong></div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-2 border-t border-neutral-100 text-center">
+                    <span className="text-[10px] font-bold text-emerald-700">
+                      {isSelected ? '✓ Sedang Ditampilkan' : 'Pilih Tanggal Ini →'}
+                    </span>
                   </div>
                 </div>
               );
             })}
           </div>
         )}
-      </div>
-
-      {/* 6. Synced Integration Notes */}
-      <div className="bg-neutral-900 text-neutral-200 p-6 rounded-2xl border border-neutral-850 space-y-3">
-        <h4 className="text-white text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-emerald-400" />
-          Koneksi Integrasi Otomatis (Real-Time)
-        </h4>
-        <p className="text-xs leading-relaxed text-neutral-400">
-          Setiap perubahan porsi di atas yang disimpan akan digunakan secara instan pada saat pembuatan atau inisialisasi dokumen:
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-2">
-          <div className="bg-neutral-850 p-4 rounded-xl border border-neutral-800 space-y-1">
-            <span className="font-extrabold text-emerald-400">📄 Berita Acara Serah Terima (BAST)</span>
-            <p className="text-neutral-400 text-[11px]">
-              Kuantitas boks makan harian otomatis mengambil total (Guru + Siswa atau Besar + Kecil) dari master data di atas sesuai tanggal.
-            </p>
-          </div>
-          <div className="bg-neutral-850 p-4 rounded-xl border border-neutral-800 space-y-1">
-            <span className="font-extrabold text-emerald-400">🚚 Surat Jalan Logistik</span>
-            <p className="text-neutral-400 text-[11px]">
-              Tabel rincian barang otomatis menyesuaikan jumlah kuantitas paket gizi, buah potong, dan susu UHT berdasarkan angka porsi di atas.
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   );

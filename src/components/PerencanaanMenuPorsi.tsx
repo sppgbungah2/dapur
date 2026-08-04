@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { PortionConfig, DEFAULT_PORTIONS } from './PortionMasterView';
 import { CheckCircle2, Save, FileText, Loader2, AlertCircle } from 'lucide-react';
-import { generateInitialDocsAsync } from '../utils/generateDocs';
+import { generateInitialDocsAsync, updateExistingDocsWithPortions } from '../utils/generateDocs';
 import { DayMenu } from '../types';
 
 interface Props {
@@ -106,12 +106,18 @@ export default function PerencanaanMenuPorsi({
       }
     }
 
+    // 3. Update existing Surat Jalan and BAST documents automatically
+    if (shippingDocs.length > 0) {
+      const updatedDocs = updateExistingDocsWithPortions(shippingDocs, selectedDate, portions);
+      setShippingDocs(updatedDocs);
+    }
+
     setIsSaving(false);
     setIsSaved(true);
     if (onSavePortions) {
       onSavePortions(portions);
     }
-    onSuccess('Berhasil menyimpan Rencana Menu & PM ke Database!');
+    onSuccess('Berhasil menyimpan Rencana Menu & PM serta memperbarui SJ/BAST di Database!');
   };
 
   const handleInitSOP = async () => {
