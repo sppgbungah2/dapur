@@ -275,7 +275,7 @@ export default function DailyReportPDF({
         }
       }
     } catch (e) {
-      console.error("Error setting absensi:", e);
+      console.warn("Error setting absensi:", e);
     }
 
     // 5. Waste Records
@@ -303,7 +303,7 @@ export default function DailyReportPDF({
         });
       }
     } catch (e) {
-      console.error(e);
+      console.warn(e);
     }
   }, [selectedDate]);
 

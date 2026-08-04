@@ -391,7 +391,7 @@ function ShippingDocPanel({
         const cdnUrl = await uploadToCloudinary(file, 'image');
         setImageUrl(cdnUrl);
       } catch (err: any) {
-        console.error('Error uploading file to Cloudinary:', err);
+        console.warn('Error uploading file to Cloudinary:', err);
         setUploadFileError(err.message || 'Gagal mengunggah dokumentasi ke Cloudinary.');
       } finally {
         setIsUploadingFile(false);
@@ -2076,7 +2076,7 @@ export default function MockModules({
       try {
         return JSON.parse(saved);
       } catch (e) {
-        console.error('Error parsing kedatangan barang map:', e);
+        console.warn('Error parsing kedatangan barang map:', e);
       }
     }
     return {};
@@ -2183,7 +2183,7 @@ export default function MockModules({
       try {
         return JSON.parse(saved);
       } catch (e) {
-        console.error('Error parsing shipping docs:', e);
+        console.warn('Error parsing shipping docs:', e);
       }
     }
     return [
@@ -2284,7 +2284,7 @@ export default function MockModules({
             uploaded_by: item.uploadedBy || '',
             uploaded_at: item.uploadedAt || new Date().toISOString()
           };
-          promises.push(supabase.from('shipping_docs').upsert(shipPayload));
+          promises.push(supabase.from('shipping_docs').upsert(shipPayload) as unknown as Promise<any>);
 
           // 2. BAST Doc (bast_docs)
           if (item.type === 'serah_terima' || (item as any).bastNo || (item as any).bastSekolah) {
@@ -2305,7 +2305,7 @@ export default function MockModules({
               bast_signature_receiver: (item as any).bastSignatureReceiver || null,
               uploaded_by: item.uploadedBy || ''
             };
-            promises.push(supabase.from('bast_docs').upsert(bastPayload));
+            promises.push(supabase.from('bast_docs').upsert(bastPayload) as unknown as Promise<any>);
           }
 
           // 3. Surat Jalan Doc (surat_jalan_docs)
@@ -2326,7 +2326,7 @@ export default function MockModules({
               sj_signature_receiver: (item as any).sjSignatureReceiver || null,
               uploaded_by: item.uploadedBy || ''
             };
-            promises.push(supabase.from('surat_jalan_docs').upsert(sjPayload));
+            promises.push(supabase.from('surat_jalan_docs').upsert(sjPayload) as unknown as Promise<any>);
           }
 
           // 4. Organoleptik Doc (organoleptik_docs)
@@ -2352,16 +2352,16 @@ export default function MockModules({
               photo_url: item.imageUrl || '',
               uploaded_by: item.uploadedBy || ''
             };
-            promises.push(supabase.from('organoleptik_docs').upsert(orlepPayload));
+            promises.push(supabase.from('organoleptik_docs').upsert(orlepPayload) as unknown as Promise<any>);
           }
 
           const results = await Promise.allSettled(promises);
           results.forEach((res, idx) => {
             if (res.status === 'fulfilled') {
                const { error } = res.value as any;
-               if (error) console.error(`Failed to upsert doc part ${idx} for item ${item.id}:`, error);
+               if (error) console.warn(`Failed to upsert doc part ${idx} for item ${item.id}:`, error);
             } else {
-               console.error(`Promise rejected for item ${item.id}:`, res.reason);
+               console.warn(`Promise rejected for item ${item.id}:`, res.reason);
             }
           });
         }
@@ -2951,7 +2951,7 @@ export default function MockModules({
                   setRawShippingDocs(filteredLocal.length > 0 ? filteredLocal : parsed);
                 }
               } catch (e) {
-                console.error("Error parsing local shipping docs:", e);
+                console.warn("Error parsing local shipping docs:", e);
               }
             }
           }

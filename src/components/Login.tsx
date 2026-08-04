@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Lock, Mail, Database, AlertCircle, Loader2, CheckCircle2, 
-  Info, ShieldCheck, KeyRound, Eye, EyeOff
+  Info, ShieldCheck, KeyRound, Eye, EyeOff, Settings, X, Save
 } from 'lucide-react';
 import { supabase, isSupabaseConfigured, mapUserToProfile, UserProfile } from '../lib/supabase';
 import { UserRole } from '../types';
@@ -17,6 +17,49 @@ export default function Login({ onLoginSuccess }: LoginProps) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  
+  // Settings Form State
+  const [customSupabaseUrl, setCustomSupabaseUrl] = useState('');
+  const [customSupabaseKey, setCustomSupabaseKey] = useState('');
+  const [customCloudinaryName, setCustomCloudinaryName] = useState('');
+  const [customCloudinaryPreset, setCustomCloudinaryPreset] = useState('');
+
+  useEffect(() => {
+    setCustomSupabaseUrl(localStorage.getItem('CUSTOM_SUPABASE_URL') || '');
+    setCustomSupabaseKey(localStorage.getItem('CUSTOM_SUPABASE_ANON_KEY') || '');
+    setCustomCloudinaryName(localStorage.getItem('CUSTOM_CLOUDINARY_CLOUD_NAME') || '');
+    setCustomCloudinaryPreset(localStorage.getItem('CUSTOM_CLOUDINARY_UPLOAD_PRESET') || '');
+  }, []);
+
+  const handleSaveSettings = () => {
+    if (customSupabaseUrl) {
+      localStorage.setItem('CUSTOM_SUPABASE_URL', customSupabaseUrl.trim());
+    } else {
+      localStorage.removeItem('CUSTOM_SUPABASE_URL');
+    }
+    
+    if (customSupabaseKey) {
+      localStorage.setItem('CUSTOM_SUPABASE_ANON_KEY', customSupabaseKey.trim());
+    } else {
+      localStorage.removeItem('CUSTOM_SUPABASE_ANON_KEY');
+    }
+
+    if (customCloudinaryName) {
+      localStorage.setItem('CUSTOM_CLOUDINARY_CLOUD_NAME', customCloudinaryName.trim());
+    } else {
+      localStorage.removeItem('CUSTOM_CLOUDINARY_CLOUD_NAME');
+    }
+
+    if (customCloudinaryPreset) {
+      localStorage.setItem('CUSTOM_CLOUDINARY_UPLOAD_PRESET', customCloudinaryPreset.trim());
+    } else {
+      localStorage.removeItem('CUSTOM_CLOUDINARY_UPLOAD_PRESET');
+    }
+    
+    setShowSettings(false);
+    window.location.reload(); // Reload to apply the new connection
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,11 +143,15 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         }, 1000);
       }
     } catch (err: any) {
-      console.error('Error logging in:', err);
+      // Use console.warn instead of console.warn to prevent AI Studio from showing a red error overlay 
+      // for a network error that we are handling gracefully in the UI.
+      console.warn('Login notice:', err);
       // Translate typical supabase error messages for Indonesian boarding school environment
       let customErr = err.message || 'Gagal tersambung dengan server auth.';
       if (customErr.includes('Invalid login credentials')) {
         customErr = 'Email atau kata sandi salah. Silakan coba kembali.';
+      } else if (customErr.includes('Failed to fetch')) {
+        customErr = 'Gagal terhubung ke database (Failed to fetch). Hapus Custom Supabase URL & Key di Pengaturan (⚙️) jika sudah tidak valid.';
       }
       setErrorMsg(customErr);
       setLoading(false);
@@ -121,7 +168,15 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       <div className="w-full max-w-md bg-slate-800/90 backdrop-blur-md rounded-2xl border border-slate-700/60 shadow-2xl overflow-hidden relative z-10">
         
         {/* Top Boarder Header */}
-        <div className="p-6 md:p-8 bg-slate-850 border-b border-slate-700 text-center space-y-3">
+        <div className="p-6 md:p-8 bg-slate-850 border-b border-slate-700 text-center space-y-3 relative">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="absolute top-4 right-4 text-slate-400 hover:text-white p-2 rounded-full hover:bg-slate-700 transition-colors"
+            title="Pengaturan Koneksi Supabase"
+          >
+            <Settings className="h-5 w-5" />
+          </button>
+          
           <img 
             src="https://www.bgn.go.id/logo-bgn.png" 
             alt="Logo BGN" 
@@ -253,6 +308,93 @@ export default function Login({ onLoginSuccess }: LoginProps) {
           YAYASAN PONDOK PESANTREN QOMARUDDIN BUNGAH GRESIK
         </div>
 
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-800 rounded-2xl w-full max-w-md border border-slate-700 shadow-2xl overflow-hidden">
+            <div className="flex justify-between items-center p-5 border-b border-slate-700">
+              <h2 className="text-white font-bold flex items-center gap-2">
+                <Database className="h-5 w-5 text-emerald-400" />
+                Koneksi Supabase Lokal
+              </h2>
+              <button 
+                onClick={() => setShowSettings(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-700/50">
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Isi form di bawah ini jika Anda ingin menggunakan server Supabase Self-Hosted lokal (misalnya via Docker / Cloudflare Tunnel). 
+                  Kosongkan form jika Anda ingin kembali menggunakan environment default (VITE_).
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-slate-300 text-xs font-semibold">Supabase Project URL</label>
+                <input
+                  type="text"
+                  placeholder="https://abc.supabase.co atau https://api.local.net"
+                  value={customSupabaseUrl}
+                  onChange={(e) => setCustomSupabaseUrl(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10"
+                />
+              </div>
+              
+              <div className="space-y-1.5">
+                <label className="block text-slate-300 text-xs font-semibold">Supabase Anon Key</label>
+                <input
+                  type="text"
+                  placeholder="eyJhbGci..."
+                  value={customSupabaseKey}
+                  onChange={(e) => setCustomSupabaseKey(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10"
+                />
+              </div>
+              <div className="space-y-1.5 mt-4">
+                <label className="block text-slate-300 text-xs font-semibold">Cloudinary Cloud Name (Opsional)</label>
+                <input
+                  type="text"
+                  placeholder="dwxyz..."
+                  value={customCloudinaryName}
+                  onChange={(e) => setCustomCloudinaryName(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-slate-300 text-xs font-semibold">Cloudinary Upload Preset (Opsional)</label>
+                <input
+                  type="text"
+                  placeholder="preset_name"
+                  value={customCloudinaryPreset}
+                  onChange={(e) => setCustomCloudinaryPreset(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/10"
+                />
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-slate-700 bg-slate-850 flex justify-end gap-3">
+              <button
+                onClick={() => setShowSettings(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-300 hover:bg-slate-700 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleSaveSettings}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 transition-colors shadow-md"
+              >
+                <Save className="h-4 w-4" />
+                Simpan & Reload
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

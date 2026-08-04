@@ -35,7 +35,7 @@ export async function fetchPortionsForDate(date: string): Promise<PortionConfig>
     const globalSaved = localStorage.getItem('sppg_global_master_portions');
     if (globalSaved) return JSON.parse(globalSaved);
   } catch (err) {
-    console.error("Error loading portion master data:", err);
+    console.warn("Error loading portion master data:", err);
   }
   return portions;
 }

@@ -492,6 +492,5 @@ export function getSopTaskTableName(div?: Division | string): string {
 
 export function getSopTaskTableNames(div?: Division | string): string[] {
   const primary = getSopTaskTableName(div);
-  const singular = primary.replace('sop_tasks_', 'sop_task_');
-  return [primary, singular, 'sop_tasks'];
+  return [primary];
 }

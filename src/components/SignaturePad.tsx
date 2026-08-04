@@ -189,7 +189,7 @@ export default function SignaturePad({ onSave, onCancel, title, suggestedName }:
       const finalUrl = await uploadToCloudinary(base64Url, 'image');
       onSave(finalUrl);
     } catch (err: any) {
-      console.error('Failed to upload signature:', err);
+      console.warn('Failed to upload signature:', err);
       setUploadError(err.message || 'Gagal mengunggah tanda tangan ke Cloudinary');
     } finally {
       setIsUploading(false);

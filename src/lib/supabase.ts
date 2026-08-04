@@ -1,14 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 import { UserRole, Division } from '../types';
 
-const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+const getLocalStorage = (key: string) => {
+  try {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(key);
+    }
+  } catch (e) {
+    // ignore
+  }
+  return null;
+};
 
-// Clean up standard placeholder strings
-const isPlaceholderUrl = !supabaseUrl || supabaseUrl.includes('your_project_id') || supabaseUrl === '';
-const isPlaceholderKey = !supabaseAnonKey || supabaseAnonKey.includes('your_public_anon_key_here') || supabaseAnonKey === '';
+const supabaseUrl = getLocalStorage('CUSTOM_SUPABASE_URL') || (import.meta as any).env?.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = getLocalStorage('CUSTOM_SUPABASE_ANON_KEY') || (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
-export const isSupabaseConfigured = !isPlaceholderUrl && !isPlaceholderKey;
+// Clean up standard placeholder strings and invalid values
+const isValidUrl = (url: string) => url && url.startsWith('http') && !url.includes('your_project_id') && !url.includes('api.local.net') && url !== 'null' && url !== 'undefined';
+const isValidKey = (key: string) => key && !key.includes('your_public_anon_key_here') && !key.includes('mock-anon-key') && key.trim() !== '' && key !== 'null' && key !== 'undefined';
+
+export const isSupabaseConfigured = isValidUrl(supabaseUrl) && isValidKey(supabaseAnonKey);
 
 // Real Supabase client instance (or null if not yet configured)
 export const supabase = isSupabaseConfigured 

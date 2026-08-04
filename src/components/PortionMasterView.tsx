@@ -119,7 +119,7 @@ export default function PortionMasterView({ selectedDate }: PortionMasterViewPro
         setPortions(JSON.parse(saved));
         return;
       } catch (e) {
-        console.error('Error parsing local portions:', e);
+        console.warn('Error parsing local portions:', e);
       }
     }
 
@@ -130,7 +130,7 @@ export default function PortionMasterView({ selectedDate }: PortionMasterViewPro
         setPortions(JSON.parse(globalDefault));
         return;
       } catch (e) {
-        console.error('Error parsing global master portions:', e);
+        console.warn('Error parsing global master portions:', e);
       }
     }
 

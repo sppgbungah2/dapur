@@ -42,7 +42,7 @@ export function useSopData(selectedDate: string) {
         }
       }
     } catch (e) {
-      console.error('Error reading localStorage sops:', e);
+      console.warn('Error reading localStorage sops:', e);
     }
   }, []);
 
@@ -92,14 +92,13 @@ export function useSopData(selectedDate: string) {
       }
 
       const divisionTables = [
-        'sop_tasks',
-        'sop_tasks_driver', 'sop_task_driver',
-        'sop_tasks_stocking', 'sop_task_stocking',
-        'sop_tasks_masak', 'sop_task_masak',
-        'sop_tasks_pemorsian', 'sop_task_pemorsian',
-        'sop_tasks_kebersihan', 'sop_task_kebersihan',
-        'sop_tasks_cuci', 'sop_task_cuci',
-        'sop_tasks_keamanan', 'sop_task_keamanan'
+        'sop_tasks_driver',
+        'sop_tasks_stocking',
+        'sop_tasks_masak',
+        'sop_tasks_pemorsian',
+        'sop_tasks_kebersihan',
+        'sop_tasks_cuci',
+        'sop_tasks_keamanan'
       ];
 
       let taskFetchResults: { tbl: string; data: any[] }[] = [];
@@ -424,7 +423,7 @@ export function useSopData(selectedDate: string) {
       setSyncStatus('saved');
       return { success: true };
     } catch (err: any) {
-      console.error('Error updating SOP:', err);
+      console.warn('Error updating SOP:', err);
       setSyncStatus('error');
       return { success: false, error: err.message || 'Gagal menyimpan perubahan' };
     } finally {
@@ -553,7 +552,7 @@ export function useSopData(selectedDate: string) {
         message: `🎉 Berhasil! Seluruh ${sopsToSave.length} SOP tersimpan & tersinkronisasi 100% ke Cloud Supabase!` 
       };
     } catch (err: any) {
-      console.error('Error in handleSaveSopsToCloud:', err);
+      console.warn('Error in handleSaveSopsToCloud:', err);
       setSyncStatus('error');
       return { success: false, message: `Gagal menyimpan ke Cloud: ${err.message}` };
     } finally {
@@ -587,13 +586,13 @@ export function useSopData(selectedDate: string) {
 
       if (isSupabaseConfigured && supabase) {
         const divisionTables = [
-          'sop_tasks', 'sop_tasks_driver', 'sop_task_driver', 'sop_driver',
-          'sop_tasks_stocking', 'sop_task_stocking', 'sop_stocking', 'sop_persiapan',
-          'sop_tasks_masak', 'sop_task_masak', 'sop_masak', 'sop_pemasakan',
-          'sop_tasks_pemorsian', 'sop_task_pemorsian', 'sop_pemorsian',
-          'sop_tasks_kebersihan', 'sop_task_kebersihan', 'sop_kebersihan',
-          'sop_tasks_cuci', 'sop_task_cuci', 'sop_cuci', 'sop_pencucian',
-          'sop_tasks_keamanan', 'sop_task_keamanan', 'sop_keamanan'
+          'sop_tasks_driver',
+          'sop_tasks_stocking',
+          'sop_tasks_masak',
+          'sop_tasks_pemorsian',
+          'sop_tasks_kebersihan',
+          'sop_tasks_cuci',
+          'sop_tasks_keamanan'
         ];
         for (const tbl of divisionTables) {
           try {

@@ -28,7 +28,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error caught by ErrorBoundary:', error, errorInfo);
+    console.warn('Uncaught error caught by ErrorBoundary:', error, errorInfo);
   }
 
   private handleReload = () => {
@@ -52,6 +52,25 @@ export class ErrorBoundary extends Component<Props, State> {
                 {this.state.error.message}
               </div>
             )}
+            
+            {this.state.error?.message?.includes('Failed to fetch') && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-200">
+                <p className="font-bold mb-1">Gagal Terhubung ke Database (Failed to fetch)</p>
+                <p>Ini mungkin karena pengaturan Supabase URL atau Anon Key yang tidak valid atau telah dihapus.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.removeItem('CUSTOM_SUPABASE_URL');
+                    localStorage.removeItem('CUSTOM_SUPABASE_ANON_KEY');
+                    window.location.reload();
+                  }}
+                  className="mt-3 w-full py-2 bg-amber-600 hover:bg-amber-500 text-white font-semibold rounded-lg transition-colors"
+                >
+                  Reset Pengaturan Koneksi & Reload
+                </button>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={this.handleReload}

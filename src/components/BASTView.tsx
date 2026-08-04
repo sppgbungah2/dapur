@@ -228,7 +228,7 @@ export default function BASTView({
         }
       }
     } catch (err) {
-      console.error("Error loading portion master data for BAST initialization:", err);
+      console.warn("Error loading portion master data for BAST initialization:", err);
     }
 
     const schools = [

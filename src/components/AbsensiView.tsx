@@ -230,14 +230,14 @@ export default function AbsensiView({ selectedDate, isInitialFetchDone }: Absens
 
         const resLogs = await supabase.from('absensi_logs').upsert(logsPayload);
         if (resLogs.error) {
-          console.error('absensi_logs upsert error:', resLogs.error.message);
+          console.warn('absensi_logs upsert error:', resLogs.error.message);
         }
       }
 
       setSyncSuccessMessage(`✅ Berhasil menyinkronkan & merekap data Absensi (${logsList.length} relawan) ke tabel absensi_logs & absensi_signoffs di Supabase!`);
       setTimeout(() => setSyncSuccessMessage(null), 6000);
     } catch (err: any) {
-      console.error('Error syncing absensi to Supabase:', err);
+      console.warn('Error syncing absensi to Supabase:', err);
     } finally {
       setIsSyncing(false);
     }

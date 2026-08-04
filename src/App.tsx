@@ -346,6 +346,8 @@ export default function App() {
             setActiveTab(19);
           }
         }
+      }).catch((err) => {
+        console.warn('Failed to fetch auth session:', err);
       });
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -390,7 +392,7 @@ export default function App() {
             menusToSeed = parsedMenus;
           }
         } catch (e) {
-          console.error('Error parsing local day menus for bootstrap:', e);
+          console.warn('Error parsing local day menus for bootstrap:', e);
         }
       }
 
@@ -416,10 +418,7 @@ export default function App() {
         
         const sopId = `2026-06-15-${div}`;
         const targetTable = getSopTaskTableName(div);
-        const singularTable = targetTable.replace('sop_tasks_', 'sop_task_');
         if (!tasksByTable[targetTable]) tasksByTable[targetTable] = [];
-        if (!tasksByTable[singularTable]) tasksByTable[singularTable] = [];
-        if (!tasksByTable['sop_tasks']) tasksByTable['sop_tasks'] = [];
 
         initialSopsInDatabase.push({
           id: sopId,
@@ -449,8 +448,6 @@ export default function App() {
             sort_order: idx
           };
           tasksByTable[targetTable].push(item);
-          tasksByTable[singularTable].push(item);
-          tasksByTable['sop_tasks'].push(item);
         });
       });
 
@@ -463,10 +460,7 @@ export default function App() {
         
         const sopId = `2026-06-16-${div}`;
         const targetTable = getSopTaskTableName(div);
-        const singularTable = targetTable.replace('sop_tasks_', 'sop_task_');
         if (!tasksByTable[targetTable]) tasksByTable[targetTable] = [];
-        if (!tasksByTable[singularTable]) tasksByTable[singularTable] = [];
-        if (!tasksByTable['sop_tasks']) tasksByTable['sop_tasks'] = [];
 
         initialSopsInDatabase.push({
           id: sopId,
@@ -496,8 +490,6 @@ export default function App() {
             sort_order: idx
           };
           tasksByTable[targetTable].push(item);
-          tasksByTable[singularTable].push(item);
-          tasksByTable['sop_tasks'].push(item);
         });
       });
 
@@ -516,7 +508,7 @@ export default function App() {
       }
       console.log('Bootstrapping Supabase database completed successfully!');
     } catch (e) {
-      console.error('Failed to bootstrap Supabase:', e);
+      console.warn('Failed to bootstrap Supabase:', e);
     }
   };
 
@@ -562,13 +554,13 @@ export default function App() {
           created_by: newMenu.createdBy
         });
         if (error) {
-          console.error('Failed to save menu on Supabase:', error);
+          console.warn('Failed to save menu on Supabase:', error);
           alert('Gagal menyimpan menu ke Supabase: ' + error.message);
         } else {
           console.log('Successfully saved menu on Supabase:', date);
         }
       } catch (e) {
-        console.error('Failed to save menu to Supabase:', e);
+        console.warn('Failed to save menu to Supabase:', e);
       }
     }
   };
@@ -587,27 +579,26 @@ export default function App() {
         const { error: errMenu } = await supabase.from('day_menus').delete().eq('date', date);
         const { error: errSops } = await supabase.from('sops').delete().eq('date', date);
         const divisionTables = [
-          'sop_tasks',
-          'sop_tasks_driver', 'sop_task_driver',
-          'sop_tasks_stocking', 'sop_task_stocking',
-          'sop_tasks_masak', 'sop_task_masak',
-          'sop_tasks_pemorsian', 'sop_task_pemorsian',
-          'sop_tasks_kebersihan', 'sop_task_kebersihan',
-          'sop_tasks_cuci', 'sop_task_cuci',
-          'sop_tasks_keamanan', 'sop_task_keamanan'
+          'sop_tasks_driver',
+          'sop_tasks_stocking',
+          'sop_tasks_masak',
+          'sop_tasks_pemorsian',
+          'sop_tasks_kebersihan',
+          'sop_tasks_cuci',
+          'sop_tasks_keamanan'
         ];
         for (const tbl of divisionTables) {
           await supabase.from(tbl).delete().like('sop_id', `%${date}%`);
         }
         
         if (errMenu || errSops) {
-          console.error('Supabase deletion error:', errMenu || errSops);
+          console.warn('Supabase deletion error:', errMenu || errSops);
           alert('Gagal menghapus data dari Supabase: ' + (errMenu?.message || errSops?.message));
         } else {
           console.log('Successfully deleted menu and SOPs from Supabase:', date);
         }
       } catch (e) {
-        console.error('Failed to delete menu on Supabase:', e);
+        console.warn('Failed to delete menu on Supabase:', e);
       }
     }
   };

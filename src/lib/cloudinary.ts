@@ -9,8 +9,19 @@ interface CloudinaryConfig {
 }
 
 export function getCloudinaryConfig(): CloudinaryConfig {
-  const cloudName = (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME || '';
-  const uploadPreset = (import.meta as any).env?.VITE_CLOUDINARY_UPLOAD_PRESET || '';
+  const getLocalStorage = (key: string) => {
+    try {
+      if (typeof window !== 'undefined') {
+        return localStorage.getItem(key);
+      }
+    } catch (e) {
+      // ignore
+    }
+    return null;
+  };
+
+  const cloudName = getLocalStorage('CUSTOM_CLOUDINARY_CLOUD_NAME') || (import.meta as any).env?.VITE_CLOUDINARY_CLOUD_NAME || '';
+  const uploadPreset = getLocalStorage('CUSTOM_CLOUDINARY_UPLOAD_PRESET') || (import.meta as any).env?.VITE_CLOUDINARY_UPLOAD_PRESET || '';
   return { cloudName, uploadPreset };
 }
 
@@ -70,7 +81,7 @@ export async function uploadToCloudinary(
     const data = await response.json();
     return data.secure_url;
   } catch (error: any) {
-    console.error('Cloudinary Upload Error:', error);
+    console.warn('Cloudinary Upload Error:', error);
     throw new Error(error.message || 'Error occurred during Cloudinary upload');
   }
 }

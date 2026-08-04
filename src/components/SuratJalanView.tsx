@@ -227,7 +227,7 @@ export default function SuratJalanView({
         }
       }
     } catch (err) {
-      console.error("Error loading portion master data for Surat Jalan initialization:", err);
+      console.warn("Error loading portion master data for Surat Jalan initialization:", err);
     }
 
     const schools = [

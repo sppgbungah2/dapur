@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  LayoutDashboard, CheckCircle2, AlertCircle, Plus, Calendar, Clock, 
+  LayoutDashboard, CheckCircle2, XCircle, AlertCircle, Plus, Calendar, Clock, 
   Users, ClipboardList, ShieldAlert, CheckSquare, Settings, ArrowRight,
   TrendingUp, Award, Flame, ThumbsUp, AlertTriangle, MessageSquare, ShoppingCart,
   Check, X, RefreshCw, Star, Info, Trash2, ShieldCheck, HeartHandshake, Eye, Printer, Code, Copy, FileText
@@ -9,6 +9,7 @@ import { DayMenu, UserRole, Division, SOPDocument, TaskItem } from '../types';
 import { DEFAULT_PORTIONS, PortionConfig } from './PortionMasterView';
 import { SisaStokItem, OrderRequestItem, VolunteerComplaintItem } from './MockModules';
 import DailyReportPDF from './DailyReportPDF';
+import PerencanaanMenuPorsi from "./PerencanaanMenuPorsi";
 import { safeLocalStorageSetItem, safeLocalStorageGetItem } from '../lib/storage';
 import { createAllInitialShippingDocsForDate } from '../utils/docHelpers';
 import { generateInitialDocsAsync } from '../utils/generateDocs';
@@ -29,7 +30,6 @@ interface DashboardAdminViewProps {
   setKeluhanList: React.Dispatch<React.SetStateAction<VolunteerComplaintItem[]>>;
   onSaveSopsToCloud?: (date?: string) => Promise<{ success: boolean; message: string }>;
 }
-
 export default function DashboardAdminView({
   selectedDate,
   allDayMenus = [],
@@ -48,22 +48,19 @@ export default function DashboardAdminView({
 }: DashboardAdminViewProps) {
   // Local state for interactive editing
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [isSavingCloud, setIsSavingCloud] = useState(false);
   const [quickPorsiModalOpen, setQuickPorsiModalOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
-  const [sqlModalOpen, setSqlModalOpen] = useState(false);
-  const [copiedSql, setCopiedSql] = useState(false);
   const [tempPortions, setTempPortions] = useState<PortionConfig>({ ...DEFAULT_PORTIONS });
   
   // Load portions state for selectedDate
   const [portions, setPortions] = useState<PortionConfig>(() => {
     const saved = localStorage.getItem(`sppg_portions_${selectedDate}`);
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      try { return JSON.parse(saved); } catch (e) { console.warn(e); }
     }
     const globalSaved = localStorage.getItem('sppg_global_master_portions');
     if (globalSaved) {
-      try { return JSON.parse(globalSaved); } catch (e) { console.error(e); }
+      try { return JSON.parse(globalSaved); } catch (e) { console.warn(e); }
     }
     return { ...DEFAULT_PORTIONS };
   });
@@ -97,12 +94,10 @@ export default function DashboardAdminView({
       }
     }
   }, [selectedDate]);
-
   // Inline Admin Note for Order Approvals
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   // Inline Corrective Action for Complaints
   const [correctiveActions, setCorrectiveActions] = useState<Record<string, string>>({});
-
   // Calculations for Kitchen Performance & Analysis
   // 1. Total Portions today
   const calculateTotalPortions = (p: PortionConfig) => {
@@ -116,18 +111,15 @@ export default function DashboardAdminView({
     );
   };
   const totalPortions = calculateTotalPortions(portions);
-
   // 2. Active Menu Status
   const currentDayMenu = allDayMenus.find(m => m.date === selectedDate);
   const hasMenu = !!currentDayMenu;
   const menuItems = currentDayMenu?.menuList || [];
-
   // 3. SOP Status across all 7 divisions
   const activeSOPs = sops.filter(s => s.date === selectedDate);
   const totalSopsCount = 7;
   const generatedSopsCount = activeSOPs.length;
   const completedSopsCount = activeSOPs.filter(s => s.status === 'selesai' || s.isCheckedAll).length;
-
   // Calculate overall SOP task completion percentage
   let totalSopTasks = 0;
   let completedSopTasks = 0;
@@ -138,21 +130,46 @@ export default function DashboardAdminView({
     });
   });
   const sopSelesaikanPercent = totalSopTasks > 0 ? Math.round((completedSopTasks / totalSopTasks) * 100) : 0;
-
   // 4. Shipping Docs Status
   const todayDocs = shippingDocs.filter(d => d.date === selectedDate);
   const omprengDoc = todayDocs.find(d => d.type === 'ompreng');
   const organoleptikDoc = todayDocs.find(d => d.type === 'organoleptik');
-  
   // BAST completeness (6 target locations)
   const todayBastDocs = todayDocs.filter(d => d.type === 'serah_terima');
+  // Calculate signature completeness
+  const sjDocs = todayDocs.filter(d => d.type === 'surat_jalan');
+  const bastDocs = todayDocs.filter(d => d.type === 'serah_terima');
+  const orlepDocs = todayDocs.filter(d => d.type === 'organoleptik');
+  let totalSigs = 0;
+  let completedSigs = 0;
+  sjDocs.forEach(d => {
+      totalSigs += 3;
+      if (d.signatureSender) completedSigs++;
+      if (d.signatureDriver) completedSigs++;
+      if (d.signatureReceiver) completedSigs++;
+  });
+  bastDocs.forEach(d => {
+      totalSigs += 2;
+      if (d.signatureAdmin) completedSigs++;
+      if (d.signatureReceiver) completedSigs++;
+  });
+  orlepDocs.forEach(d => {
+      totalSigs += 2;
+      if (d.signatureGizi) completedSigs++;
+      if (d.signatureChef) completedSigs++;
+  });
+  const isSigsComplete = totalSigs > 0 && completedSigs === totalSigs;
   const completedBastLocations = todayBastDocs.map(d => d.receiverName || d.bastSekolah || '');
   const totalBastNeeded = 6;
   const currentBastCount = todayBastDocs.length;
-
   // Surat Jalan completeness (6 target locations)
   const todaySjDocs = todayDocs.filter(d => d.type === 'surat_jalan');
   const currentSjCount = todaySjDocs.length;
+
+  const currentOrlepCount = orlepDocs.length;
+  const totalOrlepNeeded = 3;
+  const pendingOrders = orderRequests.filter(o => o.status === 'pending');
+  const pendingComplaints = keluhanList.filter(k => k.status === 'pending');
 
   // Organoleptik scores
   const getAverageOrlepScore = () => {
@@ -172,84 +189,15 @@ export default function DashboardAdminView({
   const orlepSuhu = organoleptikDoc?.organoleptikSuhu || organoleptikDoc?.orlepSuhu || '68';
 
   // 5. Waste status
-  // Retrieve saved waste logs from localStorage
   const [wasteLogs, setWasteLogs] = useState<any[]>(() => {
     const saved = localStorage.getItem('sppg_waste_logs');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
+      try { return JSON.parse(saved); } catch (e) { console.warn(e); }
     }
     return [];
   });
-
-  useEffect(() => {
-    const saved = localStorage.getItem('sppg_waste_logs');
-    if (saved) {
-      try { setWasteLogs(JSON.parse(saved)); } catch (e) { console.error(e); }
-    }
-  }, [selectedDate]);
-
   const todayWasteLog = wasteLogs.find(w => w.date === selectedDate);
   const totalWasteKg = todayWasteLog ? (parseFloat(todayWasteLog.totalWastePlateKg || 0) + parseFloat(todayWasteLog.totalWasteKitchenKg || 0)).toFixed(1) : '0.0';
-
-  // Quick preset menu helper for "Buat" action
-  const handleSetDefaultMenu = () => {
-    if (!onSaveMenu) return;
-    const defaultMenu = ['Nasi Putih', 'Ayam Geprek Sambal Korek', 'Tumis Kangkung Belacan', 'Khrupuk Udang', 'Pisang Ambon'];
-    onSaveMenu(selectedDate, defaultMenu);
-    
-    // Also auto-generate SOPs based on this menu as expected
-    if (onGenerateSOPs) {
-      onGenerateSOPs(selectedDate, defaultMenu);
-    }
-
-    // Auto-generate BAST, Surat Jalan & Organoleptik docs for this date
-    handleCentralInitialization();
-    
-    setSuccessMsg('Menu default, SOP 7 divisi & Berkas Surat berhasil disiapkan!');
-    setTimeout(() => setSuccessMsg(null), 3500);
-  };
-
-    // Centralized Initialization for ALL Documents
-  const handleCentralInitialization = async () => {
-    if (!onGenerateSOPs || !setShippingDocs) return;
-    
-    // 1. Generate SOPs
-    const menuStr = hasMenu ? menuItems.join(', ') : 'Nasi Putih, Lauk Gizi, Sayur, Buah';
-    const menuArr = hasMenu ? menuItems : ['Nasi Putih', 'Lauk Gizi Masak', 'Sayur Segar', 'Krupuk', 'Buah'];
-    onGenerateSOPs(selectedDate, menuArr);
-
-    // 2. Generate BAST, Surat Jalan, Organoleptik
-    const uploaderEmail = loggedInUser?.email || 'admin@sppg.com';
-    const updatedDocs = await generateInitialDocsAsync(selectedDate, shippingDocs, menuStr, uploaderEmail);
-    setShippingDocs(updatedDocs);
-    
-    setSuccessMsg(`Berhasil menginisialisasi SEMUA dokumen (SOP, BAST, Surat Jalan, Organoleptik) ke Supabase untuk tanggal ${selectedDate}!`);
-    setTimeout(() => setSuccessMsg(null), 5000);
-  };
-
-  // Trigger whole-kitchen SOP Generation
-  const handleQuickGenerateSOPs = () => {
-    if (!onGenerateSOPs) return;
-    const menu = hasMenu ? menuItems : ['Nasi Putih', 'Lauk Gizi Masak', 'Sayur Segar', 'Krupuk', 'Buah'];
-    onGenerateSOPs(selectedDate, menu);
-    setSuccessMsg(`SOP Checklist untuk 7 divisi berhasil dibuat untuk tanggal ${selectedDate}!`);
-    setTimeout(() => setSuccessMsg(null), 3500);
-  };
-
-  // Explicitly Save SOPs to Cloud Supabase
-  const handleSaveToCloud = async () => {
-    if (!onSaveSopsToCloud) return;
-    setIsSavingCloud(true);
-    try {
-      const res = await onSaveSopsToCloud(selectedDate);
-      setSuccessMsg(res.message);
-    } catch (err: any) {
-      alert('Gagal menyimpan ke Cloud: ' + (err?.message || err));
-    } finally {
-      setIsSavingCloud(false);
-      setTimeout(() => setSuccessMsg(null), 4000);
-    }
-  };
 
   // Quick set portions
   const handleOpenQuickPorsi = () => {
@@ -263,7 +211,6 @@ export default function DashboardAdminView({
     setPortions({ ...tempPortions });
     setIsCustomPortion(true);
     setQuickPorsiModalOpen(false);
-    
     setSuccessMsg('Kebutuhan jumlah porsi hari ini berhasil disesuaikan!');
     setTimeout(() => setSuccessMsg(null), 3000);
   };
@@ -280,7 +227,6 @@ export default function DashboardAdminView({
     setOrderRequests(updated);
     safeLocalStorageSetItem('sppg_order_requests', JSON.stringify(updated));
     setSuccessMsg('Permohonan order berhasil disetujui!');
-    setTimeout(() => setSuccessMsg(null), 3000);
   };
 
   const handleRejectOrder = (orderId: string) => {
@@ -298,7 +244,6 @@ export default function DashboardAdminView({
     setOrderRequests(updated);
     safeLocalStorageSetItem('sppg_order_requests', JSON.stringify(updated));
     setSuccessMsg('Permohonan order berhasil ditolak dengan catatan.');
-    setTimeout(() => setSuccessMsg(null), 3000);
   };
 
   // Inline complaint resolution
@@ -313,11 +258,20 @@ export default function DashboardAdminView({
     setKeluhanList(updated);
     safeLocalStorageSetItem('sppg_volunteer_complaints', JSON.stringify(updated));
     setSuccessMsg('Keluhan relawan berhasil diselesaikan & diarsipkan!');
-    setTimeout(() => setSuccessMsg(null), 3000);
   };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 animate-fade-in" id="dashboard-admin-main">
+
+      <PerencanaanMenuPorsi 
+        selectedDate={selectedDate} 
+        onSuccess={msg => { setSuccessMsg(msg); setTimeout(() => setSuccessMsg(null), 3500); }} 
+        onGenerateSOPs={onGenerateSOPs!} 
+        shippingDocs={shippingDocs} 
+        setShippingDocs={setShippingDocs} 
+        allDayMenus={allDayMenus} 
+        onSaveMenu={onSaveMenu!} 
+      />
       
       {/* Banner / Header */}
       <div className="bg-linear-to-r from-emerald-800 to-emerald-950 rounded-3xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden">
@@ -346,44 +300,15 @@ export default function DashboardAdminView({
             
             {/* Quick Action Buttons */}
             <div className="flex items-center gap-2 flex-wrap">
-              {onSaveSopsToCloud && (
+              {isSigsComplete && (
                 <button
-                  onClick={handleSaveToCloud}
-                  disabled={isSavingCloud}
-                  className="bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-neutral-950 font-black text-xs px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer border border-emerald-300"
+                  onClick={() => setIsReportOpen(true)}
+                  className="bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-neutral-950 text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
                 >
-                  {isSavingCloud ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4 text-emerald-950" />}
-                  SIMPAN SOP KE CLOUD
+                  <Printer className="w-4 h-4 text-neutral-900" />
+                  Cetak Rekap Dokumen
                 </button>
               )}
-              <button
-                onClick={() => setSqlModalOpen(true)}
-                className="bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
-              >
-                <Code className="w-4 h-4 text-indigo-200" />
-                Setting SQL Query
-              </button>
-              <button
-                onClick={() => setIsReportOpen(true)}
-                className="bg-amber-500 hover:bg-amber-400 active:scale-95 text-neutral-950 text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
-              >
-                <Printer className="w-4 h-4 text-neutral-900" />
-                Ekspor PDF Laporan Harian
-              </button>
-              <button
-                onClick={handleCentralInitialization}
-                className="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer border border-amber-400/30"
-              >
-                <FileText className="w-4 h-4 text-amber-100" />
-                Inisialisasi Semua Dokumen (SOP & Surat)
-              </button>
-              <button
-                onClick={handleSetDefaultMenu}
-                className="bg-white text-emerald-900 hover:bg-emerald-50 active:scale-95 text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
-              >
-                <Plus className="w-4 h-4 text-emerald-700" />
-                Draf Cepat SOP Hari Ini
-              </button>
               <button
                 onClick={() => onGoToTab?.(10)}
                 className="bg-emerald-700 hover:bg-emerald-600 active:scale-95 border border-emerald-500/30 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
@@ -520,7 +445,6 @@ export default function DashboardAdminView({
             </div>
           </div>
         </div>
-
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
@@ -533,22 +457,17 @@ export default function DashboardAdminView({
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100">
-              
               {/* Row 1: Perencanaan Menu */}
               <tr>
                 <td className="p-4">
-                  <div className="font-bold text-neutral-800">Menu Harian Gizi</div>
-                  <div className="text-[10px] text-neutral-400">Penyusunan gizi santri & katering</div>
+                  <div className="font-bold text-neutral-800">Draf Menu Makan & Gizi</div>
+                  <div className="text-[10px] text-neutral-400">Penyusunan menu, kalori, dan nutrisi harian</div>
                 </td>
-                <td className="p-4 font-medium text-neutral-600">Ahli Gizi Ponpes</td>
+                <td className="p-4 font-medium text-neutral-600">Ahli Gizi / Chef</td>
                 <td className="p-4">
                   {hasMenu ? (
-                    <div className="flex flex-wrap gap-1 max-w-sm">
-                      {menuItems.map((item, idx) => (
-                        <span key={idx} className="bg-emerald-50 text-emerald-800 text-[9px] font-bold px-1.5 py-0.5 rounded-md border border-emerald-100">
-                          {item}
-                        </span>
-                      ))}
+                    <div className="font-medium text-neutral-800 text-xs">
+                      {menuItems.slice(0, 2).join(', ')} {menuItems.length > 2 && <span className="text-[9px] text-neutral-400 ml-1">+{menuItems.length - 2} lagi</span>}
                     </div>
                   ) : (
                     <span className="text-red-500 italic font-medium">Belum Ditentukan</span>
@@ -568,10 +487,10 @@ export default function DashboardAdminView({
                 <td className="p-4 text-right">
                   {!hasMenu ? (
                     <button
-                      onClick={handleSetDefaultMenu}
+                      onClick={() => onGoToTab?.(10)}
                       className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-3 py-1.5 rounded-lg font-bold text-[10px] transition-all cursor-pointer active:scale-95"
                     >
-                      Set Menu Default
+                      Buka Kalender Gizi
                     </button>
                   ) : (
                     <button
@@ -588,7 +507,7 @@ export default function DashboardAdminView({
               <tr>
                 <td className="p-4">
                   <div className="font-bold text-neutral-800">Master Jumlah Porsi</div>
-                  <div className="text-[10px] text-neutral-400">Pagu porsi 6 lembaga sekolah & desa</div>
+                  <div className="text-[10px] text-neutral-400">Pagu porsi operasional hari ini</div>
                 </td>
                 <td className="p-4 font-medium text-neutral-600">Staff Akuntan / Admin</td>
                 <td className="p-4">
@@ -654,29 +573,17 @@ export default function DashboardAdminView({
                     </span>
                   ) : (
                     <span className="bg-red-50 text-red-600 border border-red-200 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                      🔴 Belum Dibuat
+                      🔴 Kosong
                     </span>
                   )}
                 </td>
-                <td className="p-4 text-right">
-                  {generatedSopsCount === 0 ? (
-                    
-              <button
-                onClick={handleCentralInitialization}
-                className="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer border border-amber-400/30"
-              >
-                <FileText className="w-4 h-4 text-amber-100" />
-                Inisialisasi Semua Dokumen (SOP & Surat)
-              </button>
-
-                  ) : (
-                    <button
-                      onClick={() => onGoToTab?.(15)}
-                      className="text-neutral-500 hover:text-emerald-800 font-bold text-[10px]"
-                    >
-                      Buka Dashboard SOP
-                    </button>
-                  )}
+                <td className="p-4 text-right flex items-center justify-end gap-2">
+                  <button
+                    onClick={() => onGoToTab?.(15)}
+                    className="text-neutral-500 hover:text-emerald-800 font-bold text-[10px]"
+                  >
+                    Buka Dashboard SOP
+                  </button>
                 </td>
               </tr>
 
@@ -718,14 +625,53 @@ export default function DashboardAdminView({
                   </a>
                   <button
                     onClick={() => onGoToTab?.(18)}
-                    className="text-neutral-500 hover:text-emerald-800 font-bold text-[10px]"
+                    className="text-neutral-400 hover:text-neutral-600 font-bold text-[10px]"
                   >
-                    Buka Modul
+                    Atur Rinci
                   </button>
                 </td>
               </tr>
 
-              {/* Row 5: Berita Acara Serah Terima (BAST) */}
+              {/* Row 5: Kelengkapan Tanda Tangan PM */}
+              <tr>
+                <td className="p-4">
+                  <div className="font-bold text-neutral-800">Kelengkapan Tanda Tangan PM</div>
+                  <div className="text-[10px] text-neutral-400">Persetujuan BAST, Surat Jalan & Organoleptik</div>
+                </td>
+                <td className="p-4 font-medium text-neutral-600">PM & Koordinator</td>
+                <td className="p-4">
+                  {totalSigs > 0 ? (
+                    <div className="space-y-1">
+                      <div className="font-bold text-neutral-800">{completedSigs} dari {totalSigs} TTD Aktif</div>
+                      <div className="w-32 bg-neutral-100 rounded-full h-1.5 overflow-hidden">
+                        <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: `${(completedSigs / totalSigs) * 100}%` }}></div>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-red-500 italic font-medium">Belum Diinisiasi</span>
+                  )}
+                </td>
+                <td className="p-4 text-center">
+                  {isSigsComplete ? (
+                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                      🟢 Lengkap Selesai
+                    </span>
+                  ) : totalSigs > 0 ? (
+                    <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                      🟡 Menunggu ({totalSigs - completedSigs} lagi)
+                    </span>
+                  ) : (
+                    <span className="bg-red-50 text-red-600 border border-red-200 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                      🔴 Kosong
+                    </span>
+                  )}
+                </td>
+                <td className="p-4 text-right flex items-center justify-end gap-2">
+                  <span className="text-[10px] text-neutral-400 italic">Lihat ditiap modul dokumen</span>
+                </td>
+              </tr>
+
+              {/* Row 6: Berita Acara Serah Terima (BAST) */}
               <tr>
                 <td className="p-4">
                   <div className="font-bold text-neutral-800">Berita Acara (BAST)</div>
@@ -755,7 +701,7 @@ export default function DashboardAdminView({
                     </span>
                   )}
                 </td>
-                <td className="p-4 text-right">
+                <td className="p-4 text-right flex items-center justify-end gap-2">
                   <button
                     onClick={() => onGoToTab?.(19)}
                     className="text-neutral-500 hover:text-emerald-800 font-bold text-[10px]"
@@ -765,7 +711,7 @@ export default function DashboardAdminView({
                 </td>
               </tr>
 
-              {/* Row 6: Surat Jalan */}
+              {/* Row 7: Surat Jalan */}
               <tr>
                 <td className="p-4">
                   <div className="font-bold text-neutral-800">Surat Jalan Resmi</div>
@@ -790,108 +736,65 @@ export default function DashboardAdminView({
                     </span>
                   )}
                 </td>
-                <td className="p-4 text-right">
+                <td className="p-4 text-right flex items-center justify-end gap-2">
                   <button
-                    onClick={() => onGoToTab?.(20)}
+                    onClick={() => onGoToTab?.(21)}
                     className="text-neutral-500 hover:text-emerald-800 font-bold text-[10px]"
                   >
-                    Urus Surat Jalan
+                    Lihat Surat Jalan
                   </button>
                 </td>
               </tr>
 
-              {/* Row 7: Uji Organoleptik */}
+              {/* Row 8: Uji Organoleptik */}
               <tr>
                 <td className="p-4">
-                  <div className="font-bold text-neutral-800">Uji Sensori Organoleptik</div>
-                  <div className="text-[10px] text-neutral-400">Uji kelayakan rasa, warna, aroma, tekstur & suhu</div>
+                  <div className="font-bold text-neutral-800">Uji Organoleptik</div>
+                  <div className="text-[10px] text-neutral-400">Pengecekan Rasa, Tekstur, Suhu & Visual (Target 3/hari)</div>
                 </td>
-                <td className="p-4 font-medium text-neutral-600">Ahli Gizi / Panelis</td>
+                <td className="p-4 font-medium text-neutral-600">Ahli Gizi & Tester Independen</td>
                 <td className="p-4">
-                  {organoleptikDoc ? (
-                    <div className="flex items-center gap-1">
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500 shrink-0" />
-                      <span className="font-bold text-neutral-800">{orlepAverageScore} / 5</span>
-                      <span className="text-[10px] text-neutral-400">({organoleptikDoc.receiverName || 'Uji Panelis'})</span>
-                    </div>
-                  ) : (
-                    <span className="text-red-500 italic font-medium">Belum Diuji</span>
-                  )}
+                  <div className="font-bold text-neutral-800">{currentOrlepCount} dari {totalOrlepNeeded} Sampel</div>
                 </td>
                 <td className="p-4 text-center">
-                  {organoleptikDoc ? (
+                  {currentOrlepCount >= totalOrlepNeeded ? (
                     <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                      🟢 Lulus Uji Orlep
+                      🟢 Lengkap ({currentOrlepCount}/{totalOrlepNeeded})
+                    </span>
+                  ) : currentOrlepCount > 0 ? (
+                    <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                      🟡 Sebagian ({currentOrlepCount}/{totalOrlepNeeded})
                     </span>
                   ) : (
                     <span className="bg-red-50 text-red-600 border border-red-200 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                      🔴 Belum Diuji
+                      🔴 Belum Uji Taste
                     </span>
                   )}
                 </td>
-                <td className="p-4 text-right">
+                <td className="p-4 text-right flex items-center justify-end gap-2">
                   <button
-                    onClick={() => onGoToTab?.(21)}
+                    onClick={() => onGoToTab?.(20)}
                     className="text-neutral-500 hover:text-emerald-800 font-bold text-[10px]"
                   >
                     Buka Hasil Uji
                   </button>
                 </td>
               </tr>
-
-              {/* Row 8: Food Waste */}
-              <tr>
-                <td className="p-4">
-                  <div className="font-bold text-neutral-800">Rekap Sampah Makanan (Waste)</div>
-                  <div className="text-[10px] text-neutral-400">Pencatatan sisa konsumsi piring & sisa produksi</div>
-                </td>
-                <td className="p-4 font-medium text-neutral-600">Koordinator Kebersihan</td>
-                <td className="p-4">
-                  {todayWasteLog ? (
-                    <div className="font-bold text-neutral-800">Wasted: {totalWasteKg} Kg</div>
-                  ) : (
-                    <span className="text-red-500 italic font-medium">Belum Ada Rekap</span>
-                  )}
-                </td>
-                <td className="p-4 text-center">
-                  {todayWasteLog ? (
-                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                      🟢 Tercatat
-                    </span>
-                  ) : (
-                    <span className="bg-red-50 text-red-600 border border-red-200 text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                      🔴 Belum Dicatat
-                    </span>
-                  )}
-                </td>
-                <td className="p-4 text-right">
-                  <button
-                    onClick={() => onGoToTab?.(16)}
-                    className="text-neutral-500 hover:text-emerald-800 font-bold text-[10px]"
-                  >
-                    Buka Log Waste
-                  </button>
-                </td>
-              </tr>
-
             </tbody>
           </table>
         </div>
       </div>
-
+      
       {/* Grid: 2 Columns - Kitchen Analytics Detail & Active Approvals */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        {/* Left Column: Kitchen Performance Analysis (Analisis Kinerja Dapur) */}
+        {/* Left Column: Kitchen Performance Analysis */}
         <div className="space-y-6">
-          
-          {/* Card: SOP Compliance Division Breakdown */}
           <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-xs space-y-4">
             <h3 className="font-extrabold text-neutral-800 text-xs uppercase tracking-wider flex items-center gap-2 border-b border-neutral-50 pb-3">
               <Flame className="w-4 h-4 text-emerald-700" />
               SOP Kepatuhan Per Divisi Kerja
             </h3>
-            
             <div className="space-y-4">
               {Object.values(Division).map((div) => {
                 const matchedSOP = activeSOPs.find(s => s.division === div);
@@ -904,10 +807,9 @@ export default function DashboardAdminView({
                     if (t.completed) completedCount++;
                   });
                 }
-                
                 const percent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
                 const isSigned = matchedSOP?.signatureSupervisorUrl || matchedSOP?.signatureCoordinatorUrl;
-
+                
                 return (
                   <div key={div} className="space-y-1.5 p-3 rounded-xl hover:bg-neutral-50/50 transition-all border border-neutral-50">
                     <div className="flex items-center justify-between">
@@ -921,7 +823,6 @@ export default function DashboardAdminView({
                         {matchedSOP ? `${completedCount}/${totalCount} (${percent}%)` : '🔴 Belum Digenerate'}
                       </span>
                     </div>
-
                     {matchedSOP ? (
                       <div className="space-y-1">
                         <div className="w-full bg-neutral-100 rounded-full h-2 overflow-hidden">
@@ -941,13 +842,7 @@ export default function DashboardAdminView({
                       </div>
                     ) : (
                       <div className="flex items-center justify-between text-[10px]">
-                        <span className="text-neutral-400 italic">Klik tombol "Draf Cepat" atau "Generate" untuk membuat berkas checklist</span>
-                        <button
-                          onClick={handleQuickGenerateSOPs}
-                          className="text-emerald-800 hover:underline font-bold text-[9px] uppercase"
-                        >
-                          Generate SOP
-                        </button>
+                        <span className="text-neutral-400 italic">Belum ada dokumen SOP. Buat melalui SOP Harian.</span>
                       </div>
                     )}
                   </div>
@@ -955,634 +850,129 @@ export default function DashboardAdminView({
               })}
             </div>
           </div>
-
-          {/* Card: Organoleptik Sensory & HACCP Temperature Analysis */}
-          <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-xs space-y-4">
-            <h3 className="font-extrabold text-neutral-800 text-xs uppercase tracking-wider flex items-center gap-2 border-b border-neutral-50 pb-3">
-              <Award className="w-4 h-4 text-emerald-700" />
-              Kontrol Keamanan Pangan (HACCP Check)
-            </h3>
-            
-            {organoleptikDoc ? (
-              <div className="space-y-4">
-                {/* Temperature Indicator */}
-                <div className={`p-4 rounded-2xl border flex items-center justify-between ${
-                  parseInt(orlepSuhu) >= 60 
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-950' 
-                    : 'bg-red-50 border-red-200 text-red-950 animate-pulse'
-                }`}>
-                  <div className="space-y-0.5">
-                    <span className="block text-[10px] font-extrabold uppercase tracking-widest text-neutral-500">Suhu Penyajian Daging/Sayur</span>
-                    <span className="text-lg font-black">{orlepSuhu}° Celcius</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs">
-                    {parseInt(orlepSuhu) >= 60 ? (
-                      <>
-                        <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
-                        <span className="font-bold">Suhu Aman HACCP (&gt;60°C)</span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
-                        <span className="font-bold text-red-700">Bahaya Bakteri (&lt;60°C)!</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* Score breakdown bar charts */}
-                <div className="space-y-3">
-                  <span className="block text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Detail Penilaian Sensori</span>
-                  
-                  {/* Rasa */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-neutral-700">Rasa (Kelezatan & Kesegaran)</span>
-                      <span className="font-bold">4.8 / 5</span>
-                    </div>
-                    <div className="w-full bg-neutral-100 rounded-full h-1.5 overflow-hidden">
-                      <div className="bg-amber-400 h-1.5 rounded-full" style={{ width: '96%' }}></div>
-                    </div>
-                  </div>
-
-                  {/* Aroma */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-neutral-700">Aroma (Harum / Tidak Prengus)</span>
-                      <span className="font-bold">4.7 / 5</span>
-                    </div>
-                    <div className="w-full bg-neutral-100 rounded-full h-1.5 overflow-hidden">
-                      <div className="bg-amber-400 h-1.5 rounded-full" style={{ width: '94%' }}></div>
-                    </div>
-                  </div>
-
-                  {/* Tekstur */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-neutral-700">Tekstur (Empuk / Kematangan Pas)</span>
-                      <span className="font-bold">4.6 / 5</span>
-                    </div>
-                    <div className="w-full bg-neutral-100 rounded-full h-1.5 overflow-hidden">
-                      <div className="bg-amber-400 h-1.5 rounded-full" style={{ width: '92%' }}></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="p-8 text-center bg-neutral-50/50 rounded-2xl border border-dashed border-neutral-200">
-                <AlertCircle className="w-8 h-8 text-neutral-400 mx-auto mb-2" />
-                <span className="block text-xs font-bold text-neutral-500">Hasil Uji Organoleptik Belum Dikirim</span>
-                <span className="block text-[10px] text-neutral-400 mt-0.5">Uji panelis harian belum dimasukkan untuk tanggal terpilih</span>
-              </div>
-            )}
-          </div>
-
         </div>
 
-        {/* Right Column: Active Approvals and Volunteer Issues */}
+        {/* Right Column: Approvals & Complaints */}
         <div className="space-y-6">
-          
-          {/* Section: Pending Order Approvals */}
           <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-neutral-50 pb-3">
-              <h3 className="font-extrabold text-neutral-800 text-xs uppercase tracking-wider flex items-center gap-2">
-                <ShoppingCart className="w-4 h-4 text-purple-700" />
-                Antrean Persetujuan Belanja / Order
-              </h3>
-              <span className="bg-purple-100 text-purple-800 text-[10px] font-black uppercase px-2 py-0.5 rounded-full">
-                {orderRequests.filter(o => o.status === 'pending').length} MENUNGGU
-              </span>
-            </div>
-
-            <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
-              {orderRequests.filter(o => o.status === 'pending').length > 0 ? (
-                orderRequests.filter(o => o.status === 'pending').map((item) => (
-                  <div key={item.id} className="p-4 bg-purple-50/20 border border-purple-100 rounded-2xl space-y-3">
-                    <div className="flex items-start justify-between gap-3">
+            <h3 className="font-extrabold text-neutral-800 text-xs uppercase tracking-wider flex items-center gap-2 border-b border-neutral-50 pb-3">
+              <ShoppingCart className="w-4 h-4 text-emerald-700" />
+              Persetujuan Order Belanja
+            </h3>
+            <div className="space-y-3">
+              {pendingOrders.length === 0 ? (
+                <div className="text-center py-6 text-neutral-400 text-xs italic bg-neutral-50 rounded-xl">
+                  Tidak ada permohonan belanja yang menunggu persetujuan.
+                </div>
+              ) : (
+                pendingOrders.map(order => (
+                  <div key={order.id} className="border border-neutral-100 rounded-xl p-4 flex flex-col gap-3">
+                    <div className="flex justify-between items-start">
                       <div>
-                        <div className="font-bold text-neutral-850 text-xs">
-                          {item.item_name}
-                        </div>
-                        <div className="text-[10px] text-neutral-400 mt-0.5">
-                          Kuantitas: <span className="font-bold text-neutral-700">{item.qty}</span> • Pembuat: {item.created_by || 'Staf Dapur'}
-                        </div>
+                        <div className="font-bold text-neutral-850">{order.item_name}</div>
+                        <div className="text-[10px] text-neutral-500">{order.qty} • {order.category} • Oleh: {order.created_by || "Admin"}</div>
                       </div>
-                      <span className="bg-amber-100 text-amber-800 text-[9px] font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider">
-                        PENDING
+                      <span className="bg-amber-100 text-amber-800 text-[9px] font-bold px-2 py-0.5 rounded-full">
+                        Menunggu
                       </span>
                     </div>
-
-                    <div className="bg-white p-2.5 rounded-xl border border-purple-100/50 text-[10px] text-neutral-600">
-                      <span className="font-bold block text-[8px] uppercase tracking-wider text-neutral-400 mb-0.5">Alasan Kebutuhan:</span>
-                      "{item.reason}"
-                    </div>
-
-                    {/* Action form */}
-                    <div className="space-y-2">
+                    <div className="flex gap-2">
                       <input 
                         type="text" 
-                        placeholder="Catatan persetujuan / alasan jika ditolak..."
-                        value={adminNotes[item.id] || ''}
-                        onChange={e => setAdminNotes({ ...adminNotes, [item.id]: e.target.value })}
-                        className="w-full bg-white text-[10px] p-2 border border-neutral-200 rounded-lg focus:ring-1 focus:ring-emerald-700 outline-hidden"
+                        placeholder="Catatan persetujuan / penolakan..." 
+                        className="flex-1 text-xs px-3 py-1.5 border border-neutral-200 rounded-lg outline-hidden focus:border-emerald-500"
+                        value={adminNotes[order.id] || ''}
+                        onChange={e => setAdminNotes({...adminNotes, [order.id]: e.target.value})}
                       />
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleApproveOrder(item.id)}
-                          className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[10px] py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer"
-                        >
-                          <Check className="w-3.5 h-3.5" /> Setujui Anggaran
-                        </button>
-                        <button
-                          onClick={() => handleRejectOrder(item.id)}
-                          className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold text-[10px] px-3 py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" /> Tolak
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="p-8 text-center bg-neutral-50/50 rounded-2xl border border-dashed border-neutral-200">
-                  <ShieldCheck className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
-                  <span className="block text-xs font-bold text-neutral-500">Semua Order Telah Diproses</span>
-                  <span className="block text-[10px] text-neutral-400 mt-0.5">Tidak ada permohonan belanja yang tertunda saat ini.</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Section: Active School/Volunteer Complaints */}
-          <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-neutral-50 pb-3">
-              <h3 className="font-extrabold text-neutral-800 text-xs uppercase tracking-wider flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-rose-700" />
-                Penanganan Keluhan / Aduan Lapangan
-              </h3>
-              <span className="bg-red-100 text-red-800 text-[10px] font-black uppercase px-2 py-0.5 rounded-full">
-                {keluhanList.filter(k => k.status === 'pending').length} TERBUKA
-              </span>
-            </div>
-
-            <div className="space-y-4 max-h-[350px] overflow-y-auto pr-1">
-              {keluhanList.filter(k => k.status === 'pending').length > 0 ? (
-                keluhanList.filter(k => k.status === 'pending').map((item) => (
-                  <div key={item.id} className="p-4 bg-rose-50/20 border border-rose-100 rounded-2xl space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="font-bold text-neutral-850 text-xs">
-                          Sumber: {item.source}
-                        </div>
-                        <div className="text-[9px] text-neutral-400 uppercase font-bold mt-0.5 tracking-wider">
-                          Kategori: {item.category}
-                        </div>
-                      </div>
-                      <span className="bg-red-100 text-red-800 text-[9px] font-extrabold px-2 py-0.5 rounded-md uppercase tracking-wider">
-                        UTAMA
-                      </span>
-                    </div>
-
-                    <div className="bg-white p-2.5 rounded-xl border border-rose-100/50 text-[10px] text-neutral-600">
-                      <span className="font-bold block text-[8px] uppercase tracking-wider text-neutral-400 mb-0.5">Laporan Masalah:</span>
-                      "{item.complaint_text}"
-                    </div>
-
-                    {/* Action form */}
-                    <div className="space-y-2">
-                      <textarea 
-                        rows={2}
-                        placeholder="Tindakan korektif nyata yang diambil dituduhkan..."
-                        value={correctiveActions[item.id] || ''}
-                        onChange={e => setCorrectiveActions({ ...correctiveActions, [item.id]: e.target.value })}
-                        className="w-full bg-white text-[10px] p-2 border border-neutral-200 rounded-lg focus:ring-1 focus:ring-emerald-700 outline-hidden resize-none"
-                      />
-                      <button
-                        onClick={() => handleResolveComplaint(item.id)}
-                        className="w-full bg-neutral-900 hover:bg-neutral-850 text-white font-extrabold text-[10px] py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer"
-                      >
-                        <HeartHandshake className="w-3.5 h-3.5" /> Eksekusi Tindakan & Tutup Tiket
+                      <button onClick={() => handleApproveOrder(order.id)} className="bg-emerald-600 hover:bg-emerald-500 text-white p-1.5 rounded-lg cursor-pointer transition-colors" title="Setujui">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleRejectOrder(order.id)} className="bg-red-50 hover:bg-red-100 text-red-600 p-1.5 rounded-lg cursor-pointer transition-colors" title="Tolak">
+                        <XCircle className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
                 ))
-              ) : (
-                <div className="p-8 text-center bg-neutral-50/50 rounded-2xl border border-dashed border-neutral-200">
-                  <ThumbsUp className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
-                  <span className="block text-xs font-bold text-neutral-500">Layanan Dapur Berjalan Lancar</span>
-                  <span className="block text-[10px] text-neutral-400 mt-0.5">Tidak ada laporan keluhan yang tertunda saat ini.</span>
-                </div>
               )}
             </div>
           </div>
 
-        </div>
-
-      </div>
-
-      {/* QUICK PORTION ADJUSTMENT MODAL */}
-      {quickPorsiModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <form 
-            onSubmit={handleSaveQuickPorsi}
-            className="bg-white w-full max-w-lg rounded-3xl p-6 space-y-4 shadow-2xl animate-scale-in"
-          >
-            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
-              <h3 className="font-extrabold text-neutral-850 text-sm flex items-center gap-1.5">
-                <Users className="w-5 h-5 text-emerald-800" />
-                Penyesuaian Cepat Jumlah Porsi
-              </h3>
-              <button 
-                type="button" 
-                onClick={() => setQuickPorsiModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-600 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 max-h-[350px] overflow-y-auto p-1 text-xs">
-              
-              <div className="p-3 bg-neutral-50 rounded-xl space-y-2 border border-neutral-100">
-                <div className="font-bold text-emerald-900 text-xs">MA Assa'adah</div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Guru/Staf</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions.MA.guru}
-                    onChange={e => setTempPortions({ ...tempPortions, MA: { ...tempPortions.MA, guru: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
+          <div className="bg-white p-6 rounded-3xl border border-neutral-100 shadow-xs space-y-4">
+            <h3 className="font-extrabold text-neutral-800 text-xs uppercase tracking-wider flex items-center gap-2 border-b border-neutral-50 pb-3">
+              <MessageSquare className="w-4 h-4 text-emerald-700" />
+              Keluhan Relawan Desa
+            </h3>
+            <div className="space-y-3">
+              {pendingComplaints.length === 0 ? (
+                <div className="text-center py-6 text-neutral-400 text-xs italic bg-neutral-50 rounded-xl">
+                  Tidak ada keluhan baru dari relawan.
                 </div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Siswa/Santri</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions.MA.siswa}
-                    onChange={e => setTempPortions({ ...tempPortions, MA: { ...tempPortions.MA, siswa: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-neutral-50 rounded-xl space-y-2 border border-neutral-100">
-                <div className="font-bold text-emerald-900 text-xs">MTS II Assa'adah</div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Guru/Staf</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions["MTS II"].guru}
-                    onChange={e => setTempPortions({ ...tempPortions, "MTS II": { ...tempPortions["MTS II"], guru: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Siswa/Santri</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions["MTS II"].siswa}
-                    onChange={e => setTempPortions({ ...tempPortions, "MTS II": { ...tempPortions["MTS II"], siswa: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-neutral-50 rounded-xl space-y-2 border border-neutral-100">
-                <div className="font-bold text-emerald-900 text-xs">SMK Assa'adah</div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Guru/Staf</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions.SMK.guru}
-                    onChange={e => setTempPortions({ ...tempPortions, SMK: { ...tempPortions.SMK, guru: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Siswa/Santri</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions.SMK.siswa}
-                    onChange={e => setTempPortions({ ...tempPortions, SMK: { ...tempPortions.SMK, siswa: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-neutral-50 rounded-xl space-y-2 border border-neutral-100">
-                <div className="font-bold text-emerald-900 text-xs">SMA Assa'adah</div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Guru/Staf</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions.SMA.guru}
-                    onChange={e => setTempPortions({ ...tempPortions, SMA: { ...tempPortions.SMA, guru: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Siswa/Santri</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions.SMA.siswa}
-                    onChange={e => setTempPortions({ ...tempPortions, SMA: { ...tempPortions.SMA, siswa: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-neutral-50 rounded-xl space-y-2 border border-neutral-100">
-                <div className="font-bold text-emerald-900 text-xs">Desa Sukowati</div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Porsi Besar</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions.Sukowati.besar}
-                    onChange={e => setTempPortions({ ...tempPortions, Sukowati: { ...tempPortions.Sukowati, besar: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Porsi Kecil</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions.Sukowati.kecil}
-                    onChange={e => setTempPortions({ ...tempPortions, Sukowati: { ...tempPortions.Sukowati, kecil: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-neutral-50 rounded-xl space-y-2 border border-neutral-100">
-                <div className="font-bold text-emerald-900 text-xs">Desa Sidokumpul</div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Porsi Besar</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions.Sidokumpul.besar}
-                    onChange={e => setTempPortions({ ...tempPortions, Sidokumpul: { ...tempPortions.Sidokumpul, besar: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[9px] font-bold text-neutral-400 uppercase">Porsi Kecil</label>
-                  <input 
-                    type="number" 
-                    value={tempPortions.Sidokumpul.kecil}
-                    onChange={e => setTempPortions({ ...tempPortions, Sidokumpul: { ...tempPortions.Sidokumpul, kecil: parseInt(e.target.value) || 0 }})}
-                    className="w-full bg-white p-2 border border-neutral-200 rounded-lg text-neutral-700" 
-                  />
-                </div>
-              </div>
-
-            </div>
-
-            <div className="flex items-center gap-2 pt-3 border-t border-neutral-100">
-              <button
-                type="submit"
-                className="flex-1 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs py-2.5 rounded-xl cursor-pointer"
-              >
-                Simpan Penyesuaian
-              </button>
-              <button
-                type="button"
-                onClick={() => setQuickPorsiModalOpen(false)}
-                className="bg-neutral-100 hover:bg-neutral-200 text-neutral-600 font-bold text-xs px-4 py-2.5 rounded-xl cursor-pointer"
-              >
-                Batal
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {isReportOpen && (
-        <DailyReportPDF
-          selectedDate={selectedDate}
-          allDayMenus={allDayMenus}
-          sops={sops}
-          portions={portions}
-          shippingDocs={shippingDocs}
-          orderRequests={orderRequests}
-          keluhanList={keluhanList}
-          onClose={() => setIsReportOpen(false)}
-        />
-      )}
-
-      {sqlModalOpen && (
-        <div className="fixed inset-0 z-50 bg-neutral-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white max-w-3xl w-full rounded-2xl p-6 shadow-2xl border border-neutral-200 flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between pb-4 border-b border-neutral-100">
-              <div className="flex items-center gap-2">
-                <Code className="h-5 w-5 text-indigo-600" />
-                <h3 className="font-extrabold text-neutral-900 text-base">Setting SQL Query Supabase (Per-Divisi)</h3>
-              </div>
-              <button
-                onClick={() => setSqlModalOpen(false)}
-                className="text-neutral-400 hover:text-neutral-700 p-1.5 rounded-lg cursor-pointer hover:bg-neutral-100"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="py-4 space-y-3 overflow-y-auto flex-1 font-sans text-xs">
-              <p className="text-neutral-600">
-                Gunakan query SQL reset & recreate ini (<code className="bg-neutral-100 px-1 py-0.5 rounded font-mono text-emerald-700">sql_query_3.sql</code>) untuk menghapus/reset seluruh data & tabel lama dan membuat ulang seluruh struktur database Supabase beserta RLS Policy secara lengkap.
-              </p>
-              
-              <div className="bg-neutral-900 text-neutral-100 rounded-xl p-4 font-mono text-[11px] leading-relaxed overflow-x-auto relative group">
-                <button
-                  onClick={() => {
-                    const sqlText = `-- SQL RESET & RECREATE SUPABASE (sql_query_3.sql)
--- PERINTAH: Salin seluruh skrip ini dan jalankan di Dashboard Supabase -> SQL Editor.
-
-DROP TABLE IF EXISTS public.day_menus CASCADE;
-DROP TABLE IF EXISTS public.sops CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks CASCADE;
-
-DROP TABLE IF EXISTS public.sop_tasks_driver CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_stocking CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_masak CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_pemorsian CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_kebersihan CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_cuci CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_keamanan CASCADE;
-
-DROP TABLE IF EXISTS public.sop_task_driver CASCADE;
-DROP TABLE IF EXISTS public.sop_task_stocking CASCADE;
-DROP TABLE IF EXISTS public.sop_task_masak CASCADE;
-DROP TABLE IF EXISTS public.sop_task_pemorsian CASCADE;
-DROP TABLE IF EXISTS public.sop_task_kebersihan CASCADE;
-DROP TABLE IF EXISTS public.sop_task_cuci CASCADE;
-DROP TABLE IF EXISTS public.sop_task_keamanan CASCADE;
-
-DROP TABLE IF EXISTS public.sisa_stok CASCADE;
-DROP TABLE IF EXISTS public.order_requests CASCADE;
-DROP TABLE IF EXISTS public.volunteer_complaints CASCADE;
-DROP TABLE IF EXISTS public.shipping_docs CASCADE;
-DROP TABLE IF EXISTS public.kedatangan_barang CASCADE;
-DROP TABLE IF EXISTS public.bast_docs CASCADE;
-DROP TABLE IF EXISTS public.organoleptik_docs CASCADE;
-DROP TABLE IF EXISTS public.absensi_logs CASCADE;
-DROP TABLE IF EXISTS public.absensi_signoffs CASCADE;
-DROP TABLE IF EXISTS public.absensi_signoff CASCADE;
-
-CREATE TABLE public.day_menus (
-  id TEXT, date TEXT PRIMARY KEY, day_name TEXT, menu_list JSONB NOT NULL DEFAULT '[]'::jsonb, portion_count INT DEFAULT 100, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), created_by TEXT DEFAULT 'admin@qomaruddin.com'
-);
-
-CREATE TABLE public.sops (
-  id TEXT PRIMARY KEY, date TEXT NOT NULL, division TEXT NOT NULL, creator_role TEXT, creator_name TEXT, is_checked_all BOOLEAN DEFAULT FALSE, signer_supervisor TEXT, signature_supervisor_url TEXT, signed_supervisor_at TIMESTAMP WITH TIME ZONE, signer_coordinator TEXT, signature_coordinator_url TEXT, signed_coordinator_at TIMESTAMP WITH TIME ZONE, status TEXT DEFAULT 'aktif', created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE public.sop_tasks (
-  id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE public.sop_tasks_driver ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_stocking ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_masak ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_pemorsian ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_kebersihan ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_cuci ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_keamanan ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-
-CREATE TABLE public.sop_task_driver ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_task_stocking ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_task_masak ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_task_pemorsian ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_task_kebersihan ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_task_cuci ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_task_keamanan ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-
-CREATE TABLE public.sisa_stok ( id TEXT PRIMARY KEY, date TEXT NOT NULL, item_name TEXT NOT NULL, unit TEXT NOT NULL DEFAULT 'kg', stock_qty NUMERIC DEFAULT 0, notes TEXT, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.order_requests ( id TEXT PRIMARY KEY, item_name TEXT NOT NULL, qty NUMERIC NOT NULL DEFAULT 1, unit TEXT DEFAULT 'pcs', requester TEXT, department TEXT, priority TEXT DEFAULT 'Normal', status TEXT DEFAULT 'Pending', created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.volunteer_complaints ( id TEXT PRIMARY KEY, date TEXT NOT NULL, volunteer_name TEXT NOT NULL, division TEXT, complaint TEXT NOT NULL, status TEXT DEFAULT 'Baru', created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.shipping_docs ( id TEXT PRIMARY KEY, type TEXT DEFAULT 'ompreng', date TEXT NOT NULL, sj_no TEXT, sj_kepada TEXT, sj_driver TEXT, status TEXT DEFAULT 'Kirim Sukses', items JSONB DEFAULT '[]'::jsonb, photo_url TEXT, comments TEXT, uploaded_by TEXT, uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.kedatangan_barang ( id TEXT PRIMARY KEY, date TEXT NOT NULL, item_name TEXT NOT NULL, category TEXT, qty NUMERIC DEFAULT 0, unit TEXT DEFAULT 'kg', supplier TEXT, status TEXT DEFAULT 'Sesuai', photo_url TEXT, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.bast_docs ( id TEXT PRIMARY KEY, date TEXT NOT NULL, bast_no TEXT, bast_sekolah TEXT, bast_driver TEXT, bast_penerima TEXT, status TEXT DEFAULT 'BAST Sah', items JSONB DEFAULT '[]'::jsonb, photo_url TEXT, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.organoleptik_docs ( id TEXT PRIMARY KEY, date TEXT NOT NULL, tester_name TEXT, menu_name TEXT, color_score INT DEFAULT 5, aroma_score INT DEFAULT 5, taste_score INT DEFAULT 5, texture_score INT DEFAULT 5, notes TEXT, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.absensi_logs ( id TEXT PRIMARY KEY, date TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL, check_in_time TEXT, notes TEXT, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.absensi_signoffs ( date TEXT PRIMARY KEY, signer_ketua TEXT, signature_ketua_url TEXT, signed_ketua_at TEXT, signer_aslap TEXT, signature_aslap_url TEXT, signed_aslap_at TEXT, status TEXT DEFAULT 'Draft', created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.absensi_signoff ( date TEXT PRIMARY KEY, signer_ketua TEXT, signature_ketua_url TEXT, signed_ketua_at TEXT, signer_aslap TEXT, signature_aslap_url TEXT, signed_aslap_at TEXT, status TEXT DEFAULT 'Draft', created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-
-DO $$ 
-DECLARE 
-  tbl text;
-BEGIN 
-  FOR tbl IN 
-    SELECT table_name FROM information_schema.tables 
-    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-  LOOP 
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', tbl);
-    EXECUTE format('DROP POLICY IF EXISTS "Public Full Access" ON public.%I;', tbl);
-    EXECUTE format('DROP POLICY IF EXISTS "Allow All Access" ON public.%I;', tbl);
-    EXECUTE format('CREATE POLICY "Public Full Access" ON public.%I FOR ALL USING (true) WITH CHECK (true);', tbl);
-  END LOOP; 
-END $$;`;
-                    navigator.clipboard.writeText(sqlText);
-                    setCopiedSql(true);
-                    setTimeout(() => setCopiedSql(false), 3000);
-                  }}
-                  className="absolute top-3 right-3 bg-indigo-600 hover:bg-indigo-500 text-white font-sans text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
-                >
-                  {copiedSql ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                  {copiedSql ? 'Tersalin!' : 'Salin SQL'}
-                </button>
-                <pre className="whitespace-pre-wrap">
-{`-- SQL RESET & RECREATE SUPABASE (sql_query_3.sql)
--- PERINTAH: Salin seluruh skrip ini dan jalankan di Dashboard Supabase -> SQL Editor.
-
-DROP TABLE IF EXISTS public.day_menus CASCADE;
-DROP TABLE IF EXISTS public.sops CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks CASCADE;
-
-DROP TABLE IF EXISTS public.sop_tasks_driver CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_stocking CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_masak CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_pemorsian CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_kebersihan CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_cuci CASCADE;
-DROP TABLE IF EXISTS public.sop_tasks_keamanan CASCADE;
-
-DROP TABLE IF EXISTS public.sop_task_driver CASCADE;
-DROP TABLE IF EXISTS public.sop_task_stocking CASCADE;
-DROP TABLE IF EXISTS public.sop_task_masak CASCADE;
-DROP TABLE IF EXISTS public.sop_task_pemorsian CASCADE;
-DROP TABLE IF EXISTS public.sop_task_kebersihan CASCADE;
-DROP TABLE IF EXISTS public.sop_task_cuci CASCADE;
-DROP TABLE IF EXISTS public.sop_task_keamanan CASCADE;
-
-DROP TABLE IF EXISTS public.sisa_stok CASCADE;
-DROP TABLE IF EXISTS public.order_requests CASCADE;
-DROP TABLE IF EXISTS public.volunteer_complaints CASCADE;
-DROP TABLE IF EXISTS public.shipping_docs CASCADE;
-DROP TABLE IF EXISTS public.surat_jalan_docs CASCADE;
-DROP TABLE IF EXISTS public.kedatangan_barang CASCADE;
-DROP TABLE IF EXISTS public.bast_docs CASCADE;
-DROP TABLE IF EXISTS public.organoleptik_docs CASCADE;
-DROP TABLE IF EXISTS public.absensi_logs CASCADE;
-DROP TABLE IF EXISTS public.absensi_signoffs CASCADE;
-DROP TABLE IF EXISTS public.absensi_signoff CASCADE;
-
-CREATE TABLE public.day_menus ( id TEXT, date TEXT PRIMARY KEY, day_name TEXT, menu_list JSONB NOT NULL DEFAULT '[]'::jsonb, portion_count INT DEFAULT 100, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), created_by TEXT DEFAULT 'admin@qomaruddin.com' );
-CREATE TABLE public.sops ( id TEXT PRIMARY KEY, date TEXT NOT NULL, division TEXT NOT NULL, creator_role TEXT, creator_name TEXT, is_checked_all BOOLEAN DEFAULT FALSE, signer_supervisor TEXT, signature_supervisor_url TEXT, signed_supervisor_at TIMESTAMP WITH TIME ZONE, signer_coordinator TEXT, signature_coordinator_url TEXT, signed_coordinator_at TIMESTAMP WITH TIME ZONE, status TEXT DEFAULT 'aktif', created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-
-CREATE TABLE public.sop_tasks_driver ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_stocking ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_masak ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_pemorsian ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_kebersihan ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_cuci ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.sop_tasks_keamanan ( id TEXT PRIMARY KEY, sop_id TEXT NOT NULL, text TEXT NOT NULL, completed BOOLEAN DEFAULT FALSE, category TEXT DEFAULT 'aktif', sort_order INT DEFAULT 0, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-
-CREATE TABLE public.sisa_stok ( id TEXT PRIMARY KEY, date TEXT NOT NULL, item_name TEXT NOT NULL, unit TEXT NOT NULL DEFAULT 'kg', stock_qty NUMERIC DEFAULT 0, notes TEXT, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.order_requests ( id TEXT PRIMARY KEY, item_name TEXT NOT NULL, qty NUMERIC NOT NULL DEFAULT 1, unit TEXT DEFAULT 'pcs', requester TEXT, department TEXT, priority TEXT DEFAULT 'Normal', status TEXT DEFAULT 'Pending', created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.volunteer_complaints ( id TEXT PRIMARY KEY, date TEXT NOT NULL, volunteer_name TEXT NOT NULL, division TEXT, complaint TEXT NOT NULL, status TEXT DEFAULT 'Baru', created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.surat_jalan_docs ( id TEXT PRIMARY KEY, date TEXT NOT NULL, sj_no TEXT, sj_kepada TEXT, sj_driver TEXT, sj_waktu TEXT, status TEXT DEFAULT 'Terkirim', items JSONB DEFAULT '[]'::jsonb, sj_rows JSONB DEFAULT '[]'::jsonb, photo_url TEXT, comments TEXT, sj_signature_aslap TEXT, sj_signature_receiver TEXT, uploaded_by TEXT, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.bast_docs ( id TEXT PRIMARY KEY, date TEXT NOT NULL, bast_no TEXT, bast_sekolah TEXT, bast_driver TEXT, bast_penerima TEXT, bast_barang TEXT, bast_jumlah NUMERIC DEFAULT 0, bast_waktu TEXT, status TEXT DEFAULT 'BAST Sah', items JSONB DEFAULT '[]'::jsonb, photo_url TEXT, bast_signature_driver TEXT, bast_signature_receiver TEXT, uploaded_by TEXT, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.organoleptik_docs ( id TEXT PRIMARY KEY, date TEXT NOT NULL, tester_name TEXT, menu_name TEXT, orlep_menu TEXT, orlep_panelis TEXT, orlep_jam TEXT, orlep_desa TEXT, organoleptik_rasa TEXT, organoleptik_aroma TEXT, organoleptik_tekstur TEXT, organoleptik_suhu TEXT, color_score INT DEFAULT 5, aroma_score INT DEFAULT 5, taste_score INT DEFAULT 5, texture_score INT DEFAULT 5, orlep_kritik TEXT, orlep_grid JSONB DEFAULT '[]'::jsonb, orlep_signature TEXT, notes TEXT, status TEXT DEFAULT 'Lulus Uji', photo_url TEXT, uploaded_by TEXT, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.shipping_docs ( id TEXT PRIMARY KEY, type TEXT DEFAULT 'ompreng', date TEXT NOT NULL, vehicle_number TEXT, receiver_name TEXT, sj_no TEXT, sj_kepada TEXT, sj_driver TEXT, status TEXT DEFAULT 'Kirim Sukses', items JSONB DEFAULT '[]'::jsonb, photo_url TEXT, image_url TEXT, comments TEXT, uploaded_by TEXT, uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.kedatangan_barang ( id TEXT PRIMARY KEY, date TEXT NOT NULL, item_name TEXT NOT NULL, category TEXT, qty NUMERIC DEFAULT 0, unit TEXT DEFAULT 'kg', supplier TEXT, status TEXT DEFAULT 'Sesuai', photo_url TEXT, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.absensi_logs ( id TEXT PRIMARY KEY, date TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL, status TEXT NOT NULL, check_in_time TEXT, notes TEXT, created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-CREATE TABLE public.absensi_signoffs ( date TEXT PRIMARY KEY, signer_ketua TEXT, signature_ketua_url TEXT, signed_ketua_at TEXT, signer_aslap TEXT, signature_aslap_url TEXT, signed_aslap_at TEXT, status TEXT DEFAULT 'Draft', created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(), updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW() );
-
-GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, postgres, service_role;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, postgres, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, postgres, service_role;
-
-DO $$ 
-DECLARE 
-  tbl text;
-BEGIN 
-  FOR tbl IN 
-    SELECT table_name FROM information_schema.tables 
-    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-  LOOP 
-    EXECUTE format('ALTER TABLE public.%I DISABLE ROW LEVEL SECURITY;', tbl);
-    EXECUTE format('GRANT ALL ON public.%I TO anon, authenticated, postgres, service_role;', tbl);
-    EXECUTE format('DROP POLICY IF EXISTS "Public Full Access" ON public.%I;', tbl);
-    EXECUTE format('DROP POLICY IF EXISTS "Allow All Access" ON public.%I;', tbl);
-    EXECUTE format('CREATE POLICY "Public Full Access" ON public.%I FOR ALL TO public USING (true) WITH CHECK (true);', tbl);
-  END LOOP; 
-END $$;`}
-                </pre>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-neutral-100 flex justify-end gap-2">
-              <button
-                onClick={() => setSqlModalOpen(false)}
-                className="bg-neutral-850 hover:bg-neutral-900 text-white font-bold text-xs px-5 py-2.5 rounded-xl cursor-pointer"
-              >
-                Tutup Window
-              </button>
+              ) : (
+                pendingComplaints.map(comp => (
+                  <div key={comp.id} className="border border-neutral-100 rounded-xl p-4 flex flex-col gap-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="text-[10px] text-neutral-500">{comp.created_at} • {comp.category || "Umum"}</div>
+                        <div className="font-bold text-neutral-850 mt-0.5">{comp.created_by || "Relawan"}</div>
+                        <div className="text-xs text-neutral-700 mt-1 italic">"{comp.complaint_text}"</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Tindakan korektif yang dilakukan..." 
+                        className="flex-1 text-xs px-3 py-1.5 border border-neutral-200 rounded-lg outline-hidden focus:border-emerald-500"
+                        value={correctiveActions[comp.id] || ''}
+                        onChange={e => setCorrectiveActions({...correctiveActions, [comp.id]: e.target.value})}
+                      />
+                      <button onClick={() => handleResolveComplaint(comp.id)} className="bg-neutral-850 hover:bg-neutral-900 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg cursor-pointer transition-colors shrink-0">
+                        Tandai Selesai
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
-      )}
+      </div>
 
+      {/* Quick Porsi Modal */}
+      {quickPorsiModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+            <div className="bg-emerald-900 p-5 text-white flex justify-between items-center">
+              <h3 className="font-extrabold text-sm flex items-center gap-2">
+                <Users className="w-4 h-4 text-emerald-400" />
+                Quick Adjust Porsi Harian
+              </h3>
+              <button onClick={() => setQuickPorsiModalOpen(false)} className="text-white hover:text-emerald-200 transition-colors cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleSaveQuickPorsi} className="p-6 space-y-4">
+              {Object.keys(tempPortions).map(key => (
+                <div key={key} className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-neutral-700 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={tempPortions[key as keyof typeof tempPortions]}
+                    onChange={(e) => setTempPortions({...tempPortions, [key]: parseInt(e.target.value) || 0})}
+                    className="w-24 text-right px-3 py-2 border border-neutral-200 rounded-xl text-sm font-bold focus:border-emerald-500 outline-hidden"
+                  />
+                </div>
+              ))}
+              <div className="pt-4 border-t border-neutral-100 flex justify-end gap-2">
+                <button type="button" onClick={() => setQuickPorsiModalOpen(false)} className="text-neutral-500 hover:text-neutral-700 font-bold text-xs px-4 py-2 cursor-pointer">Batal</button>
+                <button type="submit" className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl cursor-pointer">Simpan Porsi</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
