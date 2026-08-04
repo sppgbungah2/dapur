@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { PenTool, Trash2, CheckCircle, Type, Loader2, CloudLightning, Database } from 'lucide-react';
-import { uploadToCloudinary, isCloudinaryConfigured } from '../lib/cloudinary';
+import { PenTool, Trash2, CheckCircle, Type, Loader2, HardDrive, Database } from 'lucide-react';
+import { uploadSignature } from '../lib/supabaseStorage';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 interface SignaturePadProps {
   onSave: (dataUrl: string) => void;
@@ -17,7 +18,7 @@ export default function SignaturePad({ onSave, onCancel, title, suggestedName }:
   const [selectedStyle, setSelectedStyle] = useState('font-signature-1');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const hasCloudinary = isCloudinaryConfigured();
+  const hasStorage = isSupabaseConfigured;
 
 
   // Prevent scrolling when drawing on touch screens
@@ -185,12 +186,12 @@ export default function SignaturePad({ onSave, onCancel, title, suggestedName }:
       setIsUploading(true);
       setUploadError(null);
       
-      // Upload signature to Cloudinary (will return base64 back as fallback if not configured)
-      const finalUrl = await uploadToCloudinary(base64Url, 'image');
+      // Upload PNG Blob converted from Canvas to Supabase Storage bucket 'signatures'
+      const finalUrl = await uploadSignature(base64Url);
       onSave(finalUrl);
     } catch (err: any) {
       console.warn('Failed to upload signature:', err);
-      setUploadError(err.message || 'Gagal mengunggah tanda tangan ke Cloudinary');
+      setUploadError(err.message || 'Gagal mengunggah tanda tangan ke Supabase Storage (bucket: signatures)');
     } finally {
       setIsUploading(false);
     }
@@ -203,8 +204,8 @@ export default function SignaturePad({ onSave, onCancel, title, suggestedName }:
         {isUploading && (
           <div className="absolute inset-0 bg-white/80 backdrop-blur-xs flex flex-col items-center justify-center z-[10000] animate-fade-in">
             <Loader2 className="h-10 w-10 text-emerald-700 animate-spin" />
-            <p className="mt-3 text-sm font-bold text-neutral-800">Mengunggah ke Cloudinary...</p>
-            <p className="text-xs text-neutral-400">Menyimpan tanda tangan online beresolusi tinggi</p>
+            <p className="mt-3 text-sm font-bold text-neutral-800">Mengunggah ke Supabase Storage...</p>
+            <p className="text-xs text-neutral-400">Menyimpan berkas PNG ke HDD lokal (/data/datadapur/signatures/)</p>
           </div>
         )}
 
@@ -218,12 +219,12 @@ export default function SignaturePad({ onSave, onCancel, title, suggestedName }:
             </div>
           </div>
           
-          {/* Cloudinary connection status badge */}
+          {/* Storage connection status badge */}
           <div className="shrink-0">
-            {hasCloudinary ? (
+            {hasStorage ? (
               <span className="inline-flex items-center gap-1 text-[9px] bg-emerald-900/50 text-emerald-200 border border-emerald-500/30 px-2 py-1 rounded-full font-bold">
-                <CloudLightning className="h-3 w-3 text-emerald-300 animate-pulse" />
-                CLOUDINARY ACTIVE
+                <HardDrive className="h-3 w-3 text-emerald-300 animate-pulse" />
+                SUPABASE STORAGE ACTIVE
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-[9px] bg-neutral-900/30 text-neutral-300 border border-neutral-500/30 px-2 py-1 rounded-full font-bold">

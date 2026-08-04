@@ -8,7 +8,7 @@ import {
 import { DayMenu, UserRole, DRIVERS_LIST } from '../types';
 import { supabase, isSupabaseConfigured, UserProfile } from '../lib/supabase';
 import { safeLocalStorageSetItem, safeLocalStorageGetItem } from '../lib/storage';
-import { uploadToCloudinary, isCloudinaryConfigured } from '../lib/cloudinary';
+import { uploadDocument, uploadQCPhoto, uploadToSupabaseStorage } from '../lib/supabaseStorage';
 import SignaturePad from './SignaturePad';
 import BASTView from './BASTView';
 import SuratJalanView from './SuratJalanView';
@@ -384,16 +384,17 @@ function ShippingDocPanel({
       };
       reader.readAsDataURL(file);
 
-      // 2. Perform background Cloudinary upload
+      // 2. Perform background Supabase Storage upload (bucket: documents / photos)
       try {
         setIsUploadingFile(true);
         setUploadFileError(null);
         
-        const cdnUrl = await uploadToCloudinary(file, 'image');
+        const targetBucket = type === 'organoleptik' ? 'photos' : 'documents';
+        const cdnUrl = await uploadToSupabaseStorage(file, targetBucket);
         setImageUrl(cdnUrl);
       } catch (err: any) {
-        console.warn('Error uploading file to Cloudinary:', err);
-        setUploadFileError(err.message || 'Gagal mengunggah dokumentasi ke Cloudinary.');
+        console.warn('Error uploading file to Supabase Storage:', err);
+        setUploadFileError(err.message || 'Gagal mengunggah berkas ke Supabase Storage HDD lokal.');
       } finally {
         setIsUploadingFile(false);
       }
@@ -1170,13 +1171,13 @@ function ShippingDocPanel({
               {isUploadingFile && (
                 <div className="absolute inset-0 bg-white/80 backdrop-blur-xs flex flex-col items-center justify-center z-10">
                   <Loader2 className="h-5 w-5 text-emerald-700 animate-spin" />
-                  <span className="text-[10px] font-bold text-neutral-700 mt-1">Mengunggah ke Cloudinary...</span>
+                  <span className="text-[10px] font-bold text-neutral-700 mt-1">Mengunggah ke Supabase Storage...</span>
                 </div>
               )}
               <span className="block text-[10px] font-bold text-neutral-500 uppercase flex items-center justify-between">
                 <span>Unggah File Dokumen Fisik / Foto Asli</span>
-                {isCloudinaryConfigured() ? (
-                  <span className="text-[8px] bg-emerald-50 text-emerald-700 border border-emerald-300 px-1 py-0.5 rounded font-mono">Cloud Active</span>
+                {isSupabaseConfigured ? (
+                  <span className="text-[8px] bg-emerald-50 text-emerald-700 border border-emerald-300 px-1 py-0.5 rounded font-mono">Storage Active</span>
                 ) : (
                   <span className="text-[8px] bg-neutral-100 text-neutral-500 border border-neutral-300 px-1 py-0.5 rounded font-mono">Sandbox Mode</span>
                 )}
@@ -1236,9 +1237,9 @@ function ShippingDocPanel({
                   <span className="block text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded-full w-max text-center">
                     ✓ Berkas Dilampirkan
                   </span>
-                  {imageUrl.startsWith('http') && (imageUrl.includes('cloudinary') || imageUrl.includes('cloudinary.com')) ? (
+                  {imageUrl.startsWith('http') ? (
                     <span className="text-[9px] text-emerald-600 font-semibold block mt-1 flex items-center gap-1 bg-emerald-50/40 px-1.5 py-0.5 rounded border border-emerald-200/50 w-max">
-                      ⚡ Cloud Storage: Cloudinary CDN
+                      💾 Supabase Storage: HDD Server (/data/datadapur/)
                     </span>
                   ) : imageUrl.startsWith('data:') ? (
                     <span className="text-[9px] text-amber-700 font-semibold block mt-1 flex items-center gap-1 bg-amber-50/40 px-1.5 py-0.5 rounded border border-amber-200/50 w-max">
