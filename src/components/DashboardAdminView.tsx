@@ -11,6 +11,7 @@ import { SisaStokItem, OrderRequestItem, VolunteerComplaintItem } from './MockMo
 import DailyReportPDF from './DailyReportPDF';
 import { safeLocalStorageSetItem, safeLocalStorageGetItem } from '../lib/storage';
 import { createAllInitialShippingDocsForDate } from '../utils/docHelpers';
+import { generateInitialDocsAsync } from '../utils/generateDocs';
 
 interface DashboardAdminViewProps {
   selectedDate: string;
@@ -202,25 +203,28 @@ export default function DashboardAdminView({
     }
 
     // Auto-generate BAST, Surat Jalan & Organoleptik docs for this date
-    handleInitializeDocs(defaultMenu.join(', '));
+    handleCentralInitialization();
     
     setSuccessMsg('Menu default, SOP 7 divisi & Berkas Surat berhasil disiapkan!');
     setTimeout(() => setSuccessMsg(null), 3500);
   };
 
-  // Explicit document initialization for BAST, Surat Jalan, and Organoleptik
-  const handleInitializeDocs = (customMenuStr?: string) => {
-    if (!setShippingDocs) return;
-    const menuStr = customMenuStr || (hasMenu ? menuItems.join(', ') : 'Nasi Putih, Lauk Gizi, Sayur, Buah');
-    const updatedDocs = createAllInitialShippingDocsForDate(selectedDate, shippingDocs, menuStr);
+    // Centralized Initialization for ALL Documents
+  const handleCentralInitialization = async () => {
+    if (!onGenerateSOPs || !setShippingDocs) return;
     
-    if (updatedDocs.length === shippingDocs.length) {
-      setSuccessMsg(`Berkas BAST, Surat Jalan, dan Organoleptik tanggal ${selectedDate} sudah lengkap.`);
-    } else {
-      setShippingDocs(updatedDocs);
-      setSuccessMsg(`Berhasil menginisialisasi 18 Berkas Digital (BAST, Surat Jalan, Organoleptik) ke Supabase!`);
-    }
-    setTimeout(() => setSuccessMsg(null), 4000);
+    // 1. Generate SOPs
+    const menuStr = hasMenu ? menuItems.join(', ') : 'Nasi Putih, Lauk Gizi, Sayur, Buah';
+    const menuArr = hasMenu ? menuItems : ['Nasi Putih', 'Lauk Gizi Masak', 'Sayur Segar', 'Krupuk', 'Buah'];
+    onGenerateSOPs(selectedDate, menuArr);
+
+    // 2. Generate BAST, Surat Jalan, Organoleptik
+    const uploaderEmail = loggedInUser?.email || 'admin@sppg.com';
+    const updatedDocs = await generateInitialDocsAsync(selectedDate, shippingDocs, menuStr, uploaderEmail);
+    setShippingDocs(updatedDocs);
+    
+    setSuccessMsg(`Berhasil menginisialisasi SEMUA dokumen (SOP, BAST, Surat Jalan, Organoleptik) ke Supabase untuk tanggal ${selectedDate}!`);
+    setTimeout(() => setSuccessMsg(null), 5000);
   };
 
   // Trigger whole-kitchen SOP Generation
@@ -367,11 +371,11 @@ export default function DashboardAdminView({
                 Ekspor PDF Laporan Harian
               </button>
               <button
-                onClick={() => handleInitializeDocs()}
+                onClick={handleCentralInitialization}
                 className="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer border border-amber-400/30"
               >
                 <FileText className="w-4 h-4 text-amber-100" />
-                Inisialisasi Surat (BAST, SJ, Orlep)
+                Inisialisasi Semua Dokumen (SOP & Surat)
               </button>
               <button
                 onClick={handleSetDefaultMenu}
@@ -656,12 +660,15 @@ export default function DashboardAdminView({
                 </td>
                 <td className="p-4 text-right">
                   {generatedSopsCount === 0 ? (
-                    <button
-                      onClick={handleQuickGenerateSOPs}
-                      className="bg-emerald-800 hover:bg-emerald-950 text-white px-3 py-1.5 rounded-lg font-bold text-[10px] transition-all cursor-pointer shadow-xs"
-                    >
-                      Generate SOP Hari Ini
-                    </button>
+                    
+              <button
+                onClick={handleCentralInitialization}
+                className="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer border border-amber-400/30"
+              >
+                <FileText className="w-4 h-4 text-amber-100" />
+                Inisialisasi Semua Dokumen (SOP & Surat)
+              </button>
+
                   ) : (
                     <button
                       onClick={() => onGoToTab?.(15)}

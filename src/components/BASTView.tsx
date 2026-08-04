@@ -189,6 +189,13 @@ export default function BASTView({
         
         if (error) {
           console.warn("Could not load portions from Supabase for BAST, trying local cache:", error);
+          const saved = localStorage.getItem(`sppg_portions_${selectedDate}`);
+          if (saved) {
+            portions = JSON.parse(saved);
+          } else {
+            const globalSaved = localStorage.getItem('sppg_global_master_portions');
+            if (globalSaved) portions = JSON.parse(globalSaved);
+          }
         } else if (data && data.portions) {
           portions = data.portions as PortionConfig;
         } else {

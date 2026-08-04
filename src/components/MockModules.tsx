@@ -2284,7 +2284,7 @@ export default function MockModules({
             uploaded_by: item.uploadedBy || '',
             uploaded_at: item.uploadedAt || new Date().toISOString()
           };
-          promises.push(Promise.resolve(supabase.from('shipping_docs').upsert(shipPayload)));
+          promises.push(supabase.from('shipping_docs').upsert(shipPayload));
 
           // 2. BAST Doc (bast_docs)
           if (item.type === 'serah_terima' || (item as any).bastNo || (item as any).bastSekolah) {
@@ -2305,7 +2305,7 @@ export default function MockModules({
               bast_signature_receiver: (item as any).bastSignatureReceiver || null,
               uploaded_by: item.uploadedBy || ''
             };
-            promises.push(Promise.resolve(supabase.from('bast_docs').upsert(bastPayload)));
+            promises.push(supabase.from('bast_docs').upsert(bastPayload));
           }
 
           // 3. Surat Jalan Doc (surat_jalan_docs)
@@ -2326,7 +2326,7 @@ export default function MockModules({
               sj_signature_receiver: (item as any).sjSignatureReceiver || null,
               uploaded_by: item.uploadedBy || ''
             };
-            promises.push(Promise.resolve(supabase.from('surat_jalan_docs').upsert(sjPayload)));
+            promises.push(supabase.from('surat_jalan_docs').upsert(sjPayload));
           }
 
           // 4. Organoleptik Doc (organoleptik_docs)
@@ -2352,10 +2352,18 @@ export default function MockModules({
               photo_url: item.imageUrl || '',
               uploaded_by: item.uploadedBy || ''
             };
-            promises.push(Promise.resolve(supabase.from('organoleptik_docs').upsert(orlepPayload)));
+            promises.push(supabase.from('organoleptik_docs').upsert(orlepPayload));
           }
 
-          await Promise.allSettled(promises);
+          const results = await Promise.allSettled(promises);
+          results.forEach((res, idx) => {
+            if (res.status === 'fulfilled') {
+               const { error } = res.value as any;
+               if (error) console.error(`Failed to upsert doc part ${idx} for item ${item.id}:`, error);
+            } else {
+               console.error(`Promise rejected for item ${item.id}:`, res.reason);
+            }
+          });
         }
       }
     } catch (err) {
@@ -3379,7 +3387,7 @@ RETURNS TEXT AS $$
 DECLARE
   v_email TEXT;
 BEGIN
-  v_email := LOWER(TRIM(current_user_email()));
+  v_email := LOWER(TRIM(current_user_email());
   
   -- 1. Aslap, Ketua SPPG (ketua@sppg.com), dan Admin Utama mendapatkan akses penuh (Admin/Aslap)
   IF v_email IN ('maghfurmunif@gmail.com', 'aslap@sppg.com', 'ketua@sppg.com') THEN
