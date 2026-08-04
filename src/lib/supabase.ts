@@ -1,40 +1,40 @@
 import { createClient } from '@supabase/supabase-js';
 import { UserRole, Division } from '../types';
 
-const getLocalStorage = (key: string) => {
-  try {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem(key);
-    }
-  } catch (e) {
-    // ignore
+// 1. Ambil Variabel Environment
+const rawSupabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://dapurdb.naracode.my.id';
+const rawAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyAgCiAgICAicm9sZSI6ICJhbm9uIiwKICAgICJpc3MiOiAic3VwYWJhc2UtZGVtbyIsCiAgICAiaWF0IjogMTY0MTc2OTIwMCwKICAgICJleHAiOiAxNzk5NTM1NjAwCn0.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE';
+
+// 2. Sanitasi URL: Hapus spasi & trailing slash (mencegah HTTP 308 Redirect)
+const cleanSupabaseUrl = rawSupabaseUrl.trim().replace(/\/+$/, '');
+const cleanAnonKey = rawAnonKey.trim();
+
+// 3. Validasi Ketersediaan Konfigurasi
+const isPlaceholderUrl = !cleanSupabaseUrl || cleanSupabaseUrl.includes('your_project_id');
+const isPlaceholderKey = !cleanAnonKey || cleanAnonKey.includes('your_public_anon_key_here');
+
+export const isSupabaseConfigured = !isPlaceholderUrl && !isPlaceholderKey;
+
+if (!isSupabaseConfigured) {
+  console.warn('⚠️ Supabase URL atau Anon Key belum terkonfigurasi dengan benar di .env!');
+}
+
+// 4. Client Supabase
+export const supabase = createClient(
+  cleanSupabaseUrl,
+  cleanAnonKey,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+    },
+    realtime: {
+      timeout: 20000,
+    },
   }
-  return null;
-};
+);
 
-const supabaseUrl = getLocalStorage('CUSTOM_SUPABASE_URL') || (import.meta as any).env?.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = getLocalStorage('CUSTOM_SUPABASE_ANON_KEY') || (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
-
-// Clean up standard placeholder strings and invalid values
-const isValidUrl = (url: string) => url && url.startsWith('http') && !url.includes('your_project_id') && !url.includes('api.local.net') && url !== 'null' && url !== 'undefined';
-const isValidKey = (key: string) => key && !key.includes('your_public_anon_key_here') && !key.includes('mock-anon-key') && key.trim() !== '' && key !== 'null' && key !== 'undefined';
-
-export const isSupabaseConfigured = isValidUrl(supabaseUrl) && isValidKey(supabaseAnonKey);
-
-// Real Supabase client instance (or null if not yet configured)
-export const supabase = isSupabaseConfigured 
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-      },
-      realtime: {
-        timeout: 10000,
-      }
-    })
-  : null;
-
-// User custom profile mapping helper
+// 5. Interface & Mapping Profil Pengguna Dapur Qomaruddin
 export interface UserProfile {
   id: string;
   email: string;
@@ -44,11 +44,10 @@ export interface UserProfile {
   coordinatorDivision?: Division;
 }
 
-// Map emails or user UIDs to the relevant operational role in SPPG Kitchen
 export function mapUserToProfile(uid: string, email: string): UserProfile {
   const normEmail = email.toLowerCase().trim();
   
-  // Specific instruction: User maghfurmunif@gmail.com and punkysme@gmail.com are Admins
+  // Super Admin / Developer
   if (normEmail === 'maghfurmunif@gmail.com' || normEmail === 'punkysme@gmail.com' || uid === 'd5454d9d-1d50-4baa-b5b9-f8693694db4a') {
     return {
       id: uid,
@@ -58,256 +57,64 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
     };
   }
 
-  // --- ADMIN UTAMA ---
-  if (normEmail === 'maghfur@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.ADMIN,
-      fullName: 'Ustadz Maghfur Munif (Admin Utama)'
-    };
-  }
-  if (normEmail === 'rifkah@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.ADMIN,
-      fullName: 'Ibu Rifkah (Admin Utama)'
-    };
-  }
-  if (normEmail === 'fajar@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.ADMIN,
-      fullName: 'Bpk. Fajar (Admin Utama)'
-    };
-  }
-  if (normEmail === 'sam@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.ADMIN,
-      fullName: 'Bpk. Sam (Admin Utama)'
-    };
-  }
+  // Admin Utama Dapur
+  if (normEmail === 'maghfur@qomaruddin.com') return { id: uid, email, role: UserRole.ADMIN, fullName: 'Ustadz Maghfur Munif (Admin Utama)' };
+  if (normEmail === 'rifkah@qomaruddin.com') return { id: uid, email, role: UserRole.ADMIN, fullName: 'Ibu Rifkah (Admin Utama)' };
+  if (normEmail === 'fajar@qomaruddin.com') return { id: uid, email, role: UserRole.ADMIN, fullName: 'Bpk. Fajar (Admin Utama)' };
+  if (normEmail === 'sam@qomaruddin.com') return { id: uid, email, role: UserRole.ADMIN, fullName: 'Bpk. Sam (Admin Utama)' };
+  if (normEmail === 'ketua@sppg.com') return { id: uid, email, role: UserRole.ADMIN, fullName: 'Ketua SPPG' };
 
-  // --- PENERIMA SASARAN ---
-  if (normEmail === 'ma@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.PENERIMA,
-      fullName: "MA Assa'adah (Penerima)"
-    };
+  // Tim Inti Produksi & Manajemen
+  if (normEmail === 'chef@qomaruddin.com' || normEmail.startsWith('chef')) {
+    return { id: uid, email, role: UserRole.CHEF, fullName: 'Rizka Aulia (Head Chef)' };
   }
-  if (normEmail === 'smk@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.PENERIMA,
-      fullName: "SMK Assa'adah (Penerima)"
-    };
+  if (normEmail === 'gizi@qomaruddin.com' || normEmail.startsWith('gizi')) {
+    return { id: uid, email, role: UserRole.AHLI_GIZI, fullName: 'Avianti Rahma Dianita (Ahli Gizi)' };
   }
-  if (normEmail === 'sma@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.PENERIMA,
-      fullName: "SMA Assa'adah (Penerima)"
-    };
+  if (normEmail === 'akuntan@qomaruddin.com' || normEmail.startsWith('akuntan')) {
+    return { id: uid, email, role: UserRole.AKUNTAN, fullName: 'Staff Akuntan (Tim Utama)' };
   }
-  if (normEmail === 'mts@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.PENERIMA,
-      fullName: "MTS Assa'adah II (Penerima)"
-    };
-  }
-  if (normEmail === 'sukowati@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.PENERIMA,
-      fullName: "Desa Sukowati (Penerima)"
-    };
-  }
-  if (normEmail === 'sidokumpul@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.PENERIMA,
-      fullName: "Desa Sidokumpul (Penerima)"
-    };
-  }
-
-  // --- TIM UTAMA ---
-  if (normEmail === 'chef@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.CHEF,
-      fullName: 'Rizka Aulia (Head Chef)'
-    };
-  }
-  if (normEmail === 'gizi@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.AHLI_GIZI,
-      fullName: 'Avianti Rahma Dianita (Ahli Gizi)'
-    };
-  }
-  if (normEmail === 'akuntan@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.AKUNTAN,
-      fullName: 'Staff Akuntan (Tim Utama)'
-    };
-  }
-
-  // --- DIVISI ---
-  if (normEmail === 'stocking@qomaruddin.com' || normEmail === 'stocking@sppg.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.CHEF,
-      fullName: 'Koordinator Persiapan & Stocking',
-      isCoordinator: true,
-      coordinatorDivision: Division.STOCKING
-    };
-  }
-
-  if (normEmail === 'persiapan@sppg.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.CHEF,
-      fullName: 'Koordinator Persiapan & Stocking',
-      isCoordinator: true,
-      coordinatorDivision: Division.STOCKING
-    };
-  }
-
-  if (normEmail === 'masak@qomaruddin.com' || normEmail === 'masak@sppg.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.CHEF,
-      fullName: 'Koordinator Masak',
-      isCoordinator: true,
-      coordinatorDivision: Division.MASAK
-    };
-  }
-
-  if (normEmail === 'pemorsian@qomaruddin.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.CHEF,
-      fullName: 'Koordinator Pemorsian',
-      isCoordinator: true,
-      coordinatorDivision: Division.PEMORSIAN
-    };
-  }
-
   if (normEmail === 'driver@qomaruddin.com' || normEmail === 'driver@sppg.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.DRIVER,
-      fullName: 'Imam Durori (Driver)',
-      isCoordinator: true,
-      coordinatorDivision: Division.DRIVER
-    };
+    return { id: uid, email, role: UserRole.DRIVER, fullName: 'Imam Durori (Driver)', isCoordinator: true, coordinatorDivision: Division.DRIVER };
   }
 
+  // Koordinator Divisi Operasional SOP
+  if (normEmail === 'stocking@qomaruddin.com' || normEmail === 'stocking@sppg.com' || normEmail === 'persiapan@sppg.com') {
+    return { id: uid, email, role: UserRole.CHEF, fullName: 'Koordinator Persiapan & Stocking', isCoordinator: true, coordinatorDivision: Division.STOCKING };
+  }
+  if (normEmail === 'masak@qomaruddin.com' || normEmail === 'masak@sppg.com') {
+    return { id: uid, email, role: UserRole.CHEF, fullName: 'Koordinator Masak', isCoordinator: true, coordinatorDivision: Division.MASAK };
+  }
+  if (normEmail === 'pemorsian@qomaruddin.com') {
+    return { id: uid, email, role: UserRole.CHEF, fullName: 'Koordinator Pemorsian', isCoordinator: true, coordinatorDivision: Division.PEMORSIAN };
+  }
   if (normEmail === 'cuci@qomaruddin.com' || normEmail === 'cuci@sppg.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.ASLAP,
-      fullName: 'Koordinator Cuci Ompreng',
-      isCoordinator: true,
-      coordinatorDivision: Division.CUCI
-    };
+    return { id: uid, email, role: UserRole.ASLAP, fullName: 'Koordinator Cuci Ompreng', isCoordinator: true, coordinatorDivision: Division.CUCI };
   }
-
   if (normEmail === 'kebersihan@qomaruddin.com' || normEmail === 'kebersihan@sppg.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.ASLAP,
-      fullName: 'Koordinator Kebersihan & Sanitasi',
-      isCoordinator: true,
-      coordinatorDivision: Division.KEBERSIHAN
-    };
+    return { id: uid, email, role: UserRole.ASLAP, fullName: 'Koordinator Kebersihan & Sanitasi', isCoordinator: true, coordinatorDivision: Division.KEBERSIHAN };
   }
-
   if (normEmail === 'keamanan@qomaruddin.com' || normEmail === 'kemanan@sppg.com' || normEmail === 'keamanan@sppg.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.ASLAP,
-      fullName: 'Koordinator Keamanan & Utility',
-      isCoordinator: true,
-      coordinatorDivision: Division.KEAMANAN
-    };
+    return { id: uid, email, role: UserRole.ASLAP, fullName: 'Koordinator Keamanan & Utility', isCoordinator: true, coordinatorDivision: Division.KEAMANAN };
   }
 
-  // Predefined convenience mail accounts for other legacy roles
-  if (normEmail === 'ketua@sppg.com') {
-    return {
-      id: uid,
-      email,
-      role: UserRole.ADMIN,
-      fullName: 'Ketua SPPG'
-    };
-  }
+  // Penerima Sasaran (Sekolah / Desa)
+  if (normEmail === 'ma@qomaruddin.com') return { id: uid, email, role: UserRole.PENERIMA, fullName: "MA Assa'adah (Penerima)" };
+  if (normEmail === 'smk@qomaruddin.com') return { id: uid, email, role: UserRole.PENERIMA, fullName: "SMK Assa'adah (Penerima)" };
+  if (normEmail === 'sma@qomaruddin.com') return { id: uid, email, role: UserRole.PENERIMA, fullName: "SMA Assa'adah (Penerima)" };
+  if (normEmail === 'mts@qomaruddin.com') return { id: uid, email, role: UserRole.PENERIMA, fullName: "MTS Assa'adah II (Penerima)" };
+  if (normEmail === 'sukowati@qomaruddin.com') return { id: uid, email, role: UserRole.PENERIMA, fullName: "Desa Sukowati (Penerima)" };
+  if (normEmail === 'sidokumpul@qomaruddin.com') return { id: uid, email, role: UserRole.PENERIMA, fullName: "Desa Sidokumpul (Penerima)" };
 
-  if (normEmail.startsWith('akuntan')) {
-    return {
-      id: uid,
-      email,
-      role: UserRole.AKUNTAN,
-      fullName: 'Staff Akuntan SPPG'
-    };
-  }
-
-  if (normEmail.startsWith('chef')) {
-    return {
-      id: uid,
-      email,
-      role: UserRole.CHEF,
-      fullName: 'Rizka Aulia (Head Chef)'
-    };
-  }
-  
-  if (normEmail.startsWith('gizi')) {
-    return {
-      id: uid,
-      email,
-      role: UserRole.AHLI_GIZI,
-      fullName: 'Avianti Rahma Dianita (Ahli Gizi)'
-    };
-  }
-  
+  // Fallback Role Publik / Aslap
   if (normEmail.startsWith('aslap')) {
-    return {
-      id: uid,
-      email,
-      role: UserRole.ASLAP,
-      fullName: 'Ahmad Maghfur (Aslap)'
-    };
+    return { id: uid, email, role: UserRole.ASLAP, fullName: 'Ahmad Maghfur (Aslap)' };
   }
 
-  // Default fallback for any other registered users
   return {
     id: uid,
     email,
-    role: UserRole.ADMIN, // Default to admin for user-created emails to ensure they have all capabilities
+    role: UserRole.ADMIN,
     fullName: email.split('@')[0].toUpperCase() + ' (Staff Dapur)'
   };
 }
