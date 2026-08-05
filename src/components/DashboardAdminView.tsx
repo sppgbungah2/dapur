@@ -8,7 +8,8 @@ import { DEFAULT_PORTIONS, PortionConfig } from './PortionMasterView';
 import { SisaStokItem, OrderRequestItem, VolunteerComplaintItem } from './MockModules';
 import PerencanaanMenuPorsi from "./PerencanaanMenuPorsi";
 import FullDocumentBundlePDF from "./FullDocumentBundlePDF";
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, getLocalDateString } from '../lib/supabase';
+import { setOperationalLock, publishOperationalDocuments } from '../lib/operationalLifecycle';
 
 interface DashboardAdminViewProps {
   selectedDate: string;
@@ -25,6 +26,7 @@ interface DashboardAdminViewProps {
   keluhanList: VolunteerComplaintItem[];
   setKeluhanList: React.Dispatch<React.SetStateAction<VolunteerComplaintItem[]>>;
   onSaveSopsToCloud?: (date?: string) => Promise<{ success: boolean; message: string }>;
+  onSelectDate?: (date: string) => void;
 }
 
 export default function DashboardAdminView({
@@ -41,7 +43,8 @@ export default function DashboardAdminView({
   setOrderRequests,
   keluhanList,
   setKeluhanList,
-  onSaveSopsToCloud
+  onSaveSopsToCloud,
+  onSelectDate
 }: DashboardAdminViewProps) {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isSetMasterOpen, setIsSetMasterOpen] = useState(false);
@@ -50,9 +53,31 @@ export default function DashboardAdminView({
   const [selectedBundleDate, setSelectedBundleDate] = useState<string | null>(null);
 
   // For the monthly calendar view
-  const [currentMonth, setCurrentMonth] = useState(new Date(selectedDate || new Date().toISOString()));
+  const [currentMonth, setCurrentMonth] = useState(new Date(`${selectedDate || getLocalDateString()}T00:00:00`));
   const [monthlyData, setMonthlyData] = useState<Record<string, any>>({});
   const [loadingMonth, setLoadingMonth] = useState(false);
+  const [lockMessage, setLockMessage] = useState<string | null>(null);
+
+  const handleLockSelectedDate = async () => {
+    if (!confirm(`Kunci seluruh dokumen ${selectedDate}? Form dan TTD tidak dapat diubah.`)) return;
+    try {
+      await setOperationalLock(selectedDate, true);
+      setLockMessage(`Dokumen ${selectedDate} berhasil dikunci.`);
+      await fetchMonthlyData(currentMonth);
+    } catch (err) {
+      setLockMessage(`Gagal mengunci dokumen: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const handlePublishSelectedDate = async () => {
+    try {
+      await publishOperationalDocuments(selectedDate);
+      setLockMessage(`Berkas ${selectedDate} diterbitkan dan siap diisi pengguna lapangan.`);
+      await fetchMonthlyData(currentMonth);
+    } catch (err) {
+      setLockMessage(`Gagal menerbitkan berkas: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
 
   const fetchMonthlyData = async (date: Date) => {
     setLoadingMonth(true);
@@ -71,10 +96,10 @@ if (isSupabaseConfigured && supabase) {
         const [resMenus, resPortions, resSops, resSj, resBast, resOrlep] = await Promise.allSettled([
           supabase.from('day_menus').select('*').gte('date', startDate).lte('date', endDate),
           supabase.from('master_porsi').select('date, portions').gte('date', startDate).lte('date', endDate),
-          supabase.from('sops').select('date, status, signature_supervisor_url, signature_coordinator_url, is_checked_all').gte('date', startDate).lte('date', endDate),
-          supabase.from('surat_jalan_docs').select('date, sj_signature_receiver, sj_signature_aslap').gte('date', startDate).lte('date', endDate),
-          supabase.from('bast_docs').select('date, bast_signature_receiver, status').gte('date', startDate).lte('date', endDate),
-          supabase.from('organoleptik_docs').select('date, orlep_signature, status').gte('date', startDate).lte('date', endDate)
+          supabase.from('sops').select('date, status, is_locked, signature_supervisor_url, signature_coordinator_url, is_checked_all').gte('date', startDate).lte('date', endDate),
+          supabase.from('surat_jalan_docs').select('date, is_locked, sj_signature_receiver, sj_signature_aslap').gte('date', startDate).lte('date', endDate),
+          supabase.from('bast_docs').select('date, is_locked, bast_signature_receiver, status').gte('date', startDate).lte('date', endDate),
+          supabase.from('organoleptik_docs').select('date, is_locked, orlep_signature, status').gte('date', startDate).lte('date', endDate)
         ]);
         
         menus = resMenus.status === 'fulfilled' && resMenus.value.data ? resMenus.value.data : [];
@@ -86,9 +111,9 @@ if (isSupabaseConfigured && supabase) {
         const orlepData = resOrlep.status === 'fulfilled' && resOrlep.value.data ? resOrlep.value.data : [];
         
         docs = [
-           ...sjData.map(d => ({ date: d.date, type: 'surat_jalan', sjSignatureReceiver: d.sj_signature_receiver })),
-           ...bastData.map(d => ({ date: d.date, type: 'serah_terima', bastSignatureReceiver: d.bast_signature_receiver })),
-           ...orlepData.map(d => ({ date: d.date, type: 'organoleptik', orlepSignature: d.orlep_signature }))
+           ...sjData.map(d => ({ date: d.date, type: 'surat_jalan', isLocked: d.is_locked, sjSignatureReceiver: d.sj_signature_receiver })),
+           ...bastData.map(d => ({ date: d.date, type: 'serah_terima', isLocked: d.is_locked, bastSignatureReceiver: d.bast_signature_receiver })),
+           ...orlepData.map(d => ({ date: d.date, type: 'organoleptik', isLocked: d.is_locked, orlepSignature: d.orlep_signature }))
         ];
       } else {
         menus = allDayMenus.filter(m => m.date.startsWith(`${year}-${String(month).padStart(2, '0')}`));
@@ -172,6 +197,7 @@ if (isSupabaseConfigured && supabase) {
         const isOrlepComplete = orlepStatus.startsWith('Lengkap');
         const isSopComplete = sopStatus.startsWith('Lengkap');
         const isComplete = isSjComplete && isBastComplete && isOrlepComplete && isSopComplete;
+        const isLocked = [...daySj, ...dayBast, ...dayOrlep, ...daySop].length > 0 && [...daySj, ...dayBast, ...dayOrlep, ...daySop].every((d: any) => d.isLocked || d.is_locked);
 
         aggregated[dStr] = {
           menu: dayMenu ? (dayMenu.menu_list ? dayMenu.menu_list.join(', ') : (dayMenu.menuList ? dayMenu.menuList.join(', ') : '')) : '-',
@@ -181,6 +207,7 @@ if (isSupabaseConfigured && supabase) {
           orlep: orlepStatus,
           sop: sopStatus,
           isComplete,
+          lifecycleStatus: isLocked ? 'Terkunci (Locked)' : isComplete ? 'Lengkap & Terbit' : (daySj.length + dayBast.length + dayOrlep.length + daySop.length > 0 ? 'Draft / Dalam Pengisian' : 'Belum Diinisiasi'),
           detailStatus: {
             sj: sjStatus,
             bast: bastStatus,
@@ -244,6 +271,9 @@ if (isSupabaseConfigured && supabase) {
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight font-sans">
                 Dashboard Admin Utama
               </h1>
+              <button onClick={handleLockSelectedDate} className="mt-3 rounded-lg bg-amber-400 px-3 py-2 text-xs font-extrabold text-neutral-900 hover:bg-amber-300">Rekap & Kunci Dokumen {selectedDate}</button>
+              <button onClick={handlePublishSelectedDate} className="mt-3 ml-2 rounded-lg bg-blue-400 px-3 py-2 text-xs font-extrabold text-neutral-900 hover:bg-blue-300">Terbitkan Berkas {selectedDate}</button>
+              {lockMessage && <p className="mt-2 text-xs font-semibold">{lockMessage}</p>}
               <p className="text-emerald-100 text-xs mt-1 font-light max-w-xl">
                 Selamat datang kembali. Di sini Anda dapat memantau kelengkapan dokumen operasional, membuat draf tugas, menyetujui anggaran belanja, serta menganalisis efisiensi dapur.
               </p>
@@ -375,7 +405,7 @@ if (isSupabaseConfigured && supabase) {
                       <td className="px-4 py-3"><StatusBadge status={data.sop} /></td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => setSelectedBundleDate(date)}
+                          onClick={() => { onSelectDate?.(date); setSelectedBundleDate(date); }}
                           className={`font-bold px-3 py-1.5 rounded-xl shadow-xs text-xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 ${
                             data.isComplete 
                               ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
@@ -384,7 +414,7 @@ if (isSupabaseConfigured && supabase) {
                           title="Unduh / Cetak Kumpulan Semua Dokumen Bundle PDF (Surat Jalan, BAST, Organoleptik, SOP)"
                         >
                           <Printer className="w-3.5 h-3.5" />
-                          <span>Rekap PDF {data.isComplete ? '' : ' (Draft)'}</span>
+                          <span>{data.lifecycleStatus}</span>
                         </button>
                       </td>
                     </tr>

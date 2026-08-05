@@ -10,6 +10,7 @@ import { DEFAULT_PORTIONS, PortionConfig } from './PortionMasterView';
 import { getRecipientName, getDefaultReceiptTime } from '../presetData';
 import SignaturePad from './SignaturePad';
 import OfficialStamp from './OfficialStamp';
+import MonthlyDocumentCards from './MonthlyDocumentCards';
 
 interface BASTViewProps {
   shippingDocs: any[];
@@ -18,6 +19,7 @@ interface BASTViewProps {
   loggedInUser?: UserProfile | null;
   currentUserRole: UserRole;
   allDayMenus?: DayMenu[];
+  onSelectDate?: (date: string) => void;
 }
 
 export default function BASTView({
@@ -26,7 +28,8 @@ export default function BASTView({
   selectedDate,
   loggedInUser,
   currentUserRole,
-  allDayMenus = []
+  allDayMenus = [],
+  onSelectDate
 }: BASTViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeDoc, setActiveDoc] = useState<any | null>(null);
@@ -72,6 +75,9 @@ export default function BASTView({
 
   // Filtered list based on role and choices
   const filteredDocs = shippingDocs.filter(d => d.type === "serah_terima").filter(doc => {
+    const status = String(doc.status).toLowerCase();
+    const mayOpenDraft = currentUserRole === UserRole.DRIVER;
+    if (!isAdminOrAslap && !['published', 'selesai', 'completed'].includes(status) && !(mayOpenDraft && status === 'draft')) return false;
     // 1. Role boundaries
     if (restrictedLocation && doc.bastSekolah !== restrictedLocation) return false;
     
@@ -126,7 +132,35 @@ export default function BASTView({
         }
       }
     }
-  }, [restrictedLocation, shippingDocs, selectedDate, activeDoc]);
+  }, [restrictedLocation, shippingDocs, viewDate, activeDoc]);
+
+  // Field users land directly on their actionable document for the chosen day.
+  useEffect(() => {
+    if (isAdminOrAslap || activeDoc) return;
+    const accessible = shippingDocs.filter(d => d.type === 'serah_terima' && d.date === viewDate && (['published', 'selesai', 'completed'].includes(String(d.status).toLowerCase()) || (currentUserRole === UserRole.DRIVER && String(d.status).toLowerCase() === 'draft')));
+    const target = restrictedLocation ? accessible.find(d => d.bastSekolah === restrictedLocation) : accessible[0];
+    if (target) setActiveDoc(target);
+  }, [shippingDocs, viewDate, restrictedLocation, isAdminOrAslap, activeDoc, currentUserRole]);
+
+  // A driver may arrive from a monthly card before the shared cache finishes loading.
+  // Fetch the authoritative BAST row and hydrate the same document shape used by every role.
+  useEffect(() => {
+    if (currentUserRole !== UserRole.DRIVER || !isSupabaseConfigured || !supabase) return;
+    if (shippingDocs.some(d => d.type === 'serah_terima' && d.date === viewDate)) return;
+    let alive = true;
+    supabase.from('bast_docs').select('*').eq('date', viewDate).then(({ data, error }) => {
+      if (!alive || error || !data?.length) return;
+      const hydrated = data.map((d: any) => ({
+        id: d.id, type: 'serah_terima', date: d.date, status: d.status, is_locked: !!d.is_locked,
+        bastNo: d.bast_no, bastSekolah: d.bast_sekolah, bastDriver: d.bast_driver, bastPenerima: d.bast_penerima,
+        bastBarang: d.bast_barang, bastJumlah: d.bast_jumlah, bastWaktu: d.bast_waktu, items: d.items || [],
+        imageUrl: d.photo_url || '', uploadedBy: d.uploaded_by || '', bastSignatureDriver: d.bast_signature_driver,
+        bastSignatureReceiver: d.bast_signature_receiver, receiverName: d.bast_penerima || d.bast_sekolah || ''
+      }));
+      setShippingDocs(prev => [...prev.filter(d => !(d.type === 'serah_terima' && d.date === viewDate)), ...hydrated]);
+    });
+    return () => { alive = false; };
+  }, [currentUserRole, viewDate, shippingDocs, setShippingDocs]);
 
   const getIndonesianDateText = (dateStr: string) => {
     if (!dateStr) return { dayName: 'Rabu', dateNum: '15', monthName: 'Juli', yearNum: '2026' };
@@ -301,6 +335,18 @@ export default function BASTView({
   };
 
   // Update a single field on the active document
+  const persistBast = async (doc: any) => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const { error } = await supabase.from('bast_docs').upsert({
+      id: doc.id, date: doc.date, bast_no: doc.bastNo, bast_sekolah: doc.bastSekolah,
+      bast_driver: doc.bastDriver, bast_penerima: doc.bastPenerima, bast_barang: doc.bastBarang,
+      bast_jumlah: doc.bastJumlah, bast_waktu: doc.bastWaktu, items: doc.items || [], photo_url: doc.imageUrl || '',
+      bast_signature_driver: doc.bastSignatureDriver || null, bast_signature_receiver: doc.bastSignatureReceiver || null,
+      status: doc.status || 'published', is_locked: !!doc.is_locked, uploaded_by: doc.uploadedBy || ''
+    });
+    if (error) setErrorMsg(`Gagal menyimpan BAST ke Supabase: ${error.message}`);
+  };
+
   const handleFieldChange = (field: string, value: any) => {
     if (!activeDoc) return;
     const updated = { ...activeDoc, [field]: value };
@@ -308,6 +354,7 @@ export default function BASTView({
     
     // Save to parent list
     setShippingDocs(prev => prev.map(d => d.id === activeDoc.id ? updated : d));
+    void persistBast(updated);
   };
 
   const createDefaultDigitalSignature = (name: string, role: string) => {
@@ -360,12 +407,13 @@ export default function BASTView({
 
     const updated = { 
       ...activeDoc, 
-      status: 'Terkunci',
+      status: 'Terkunci', is_locked: true,
       bastSignatureDriver: sigDriver,
       bastSignatureReceiver: sigReceiver
     };
     setActiveDoc(updated);
     setShippingDocs(prev => prev.map(d => d.id === activeDoc.id ? updated : d));
+    void persistBast(updated);
     setSuccessMsg('Berkas BAST berhasil ditandatangani, dibubuhi Stempel Resmi, dan terkunci permanen!');
     setTimeout(() => setSuccessMsg(null), 4000);
   };
@@ -395,10 +443,11 @@ export default function BASTView({
 
   // If viewing a document in full-depth
   if (activeDoc) {
-    const isLocked = activeDoc.status === 'Selesai' || activeDoc.status === 'Terkunci';
+    const isLocked = activeDoc.is_locked === true || activeDoc.isLocked === true || activeDoc.status === 'Selesai' || activeDoc.status === 'Terkunci';
     const isFieldReadOnly = isLocked || currentUserRole === UserRole.PENERIMA;
     return (
       <div className="space-y-6 animate-fade-in" id="bast-printed-view">
+        {!isAdminOrAslap && <MonthlyDocumentCards table="bast_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDoc(null); setActiveDateView(date); onSelectDate?.(date); }} />}
         {/* Sticky Action Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-neutral-50 p-4 rounded-2xl border border-neutral-200 shadow-3xs print:hidden">
           {!restrictedLocation && (
@@ -781,7 +830,7 @@ export default function BASTView({
   // Grid of Date Cards View
   if (!activeDateView) {
     // Collect all dates from menus
-    const dates = [...(allDayMenus || [])].sort((a,b) => a.date.localeCompare(b.date));
+    const dates = [...(allDayMenus || [])].filter(menu => menu.date.startsWith(selectedDate.slice(0, 7))).sort((a,b) => a.date.localeCompare(b.date));
     
     return (
       <div className="space-y-6 animate-fade-in">
@@ -807,7 +856,7 @@ export default function BASTView({
             return (
               <div 
                 key={mn.date}
-                onClick={() => setActiveDateView(mn.date)}
+              onClick={() => { setActiveDateView(mn.date); onSelectDate?.(mn.date); }}
                 className="bg-white border border-neutral-200 hover:border-emerald-600 rounded-2xl p-5 shadow-3xs cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group flex flex-col justify-between"
               >
                 <div>
@@ -853,6 +902,7 @@ export default function BASTView({
 
   return (
     <div className="space-y-6 animate-fade-in" id="bast-dashboard">
+      <MonthlyDocumentCards table="bast_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDateView(date); onSelectDate?.(date); }} />
       
       {/* 1. Header & Title Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1009,15 +1059,7 @@ export default function BASTView({
               Berkas digital Berita Acara Serah Terima makanan untuk 6 lokasi sasaran belum diinisialisasi untuk tanggal {viewDate}.
             </p>
           </div>
-          {isAkunUtama && (
-            <button
-              onClick={handleInitializeBAST}
-              className="bg-emerald-800 hover:bg-emerald-950 text-white text-xs font-bold px-6 py-3 rounded-xl text-center inline-flex items-center gap-2 cursor-pointer shadow-sm active:scale-[0.98] transition-transform"
-            >
-              <Plus className="h-4 w-4" />
-              Inisialisasi 6 Berkas BAST Sekarang
-            </button>
-          )}
+          <p className="text-xs font-semibold text-amber-700">Inisiasi hanya dilakukan oleh Admin dari Dashboard Admin.</p>
         </div>
       ) : filteredDocsByDate.length === 0 ? (
         <div className="p-16 text-center text-xs text-neutral-400 space-y-2 bg-white rounded-3xl border border-neutral-100 shadow-2xs">

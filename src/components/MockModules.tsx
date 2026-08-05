@@ -66,6 +66,7 @@ interface MockModulesProps {
   currentUserRole?: UserRole;
   loggedInUser?: UserProfile | null;
   selectedDate?: string;
+  onSelectDate?: (date: string) => void;
   sops?: any[];
   setSops?: any;
   onGoToTab?: (tabNum: number) => void;
@@ -2035,6 +2036,7 @@ export default function MockModules({
   currentUserRole,
   loggedInUser,
   selectedDate,
+  onSelectDate,
   sops = [],
   setSops,
   onGoToTab,
@@ -2724,6 +2726,7 @@ const [shipRes, bastRes, sjRes, orlepRes] = await Promise.allSettled([
                 uploadedAt: d.created_at || existing.uploadedAt || new Date().toISOString(),
                 receiverName: d.bast_penerima || d.bast_sekolah || existing.receiverName || '',
                 status: d.status || 'BAST Sah',
+                is_locked: !!d.is_locked,
                 bastNo: d.bast_no,
                 bastDriver: d.bast_driver,
                 bastSekolah: d.bast_sekolah,
@@ -2754,12 +2757,13 @@ const [shipRes, bastRes, sjRes, orlepRes] = await Promise.allSettled([
                 uploadedAt: d.created_at || existing.uploadedAt || new Date().toISOString(),
                 receiverName: d.sj_kepada || existing.receiverName || '',
                 status: d.status || 'Terkirim',
+                is_locked: !!d.is_locked,
                 sjNo: d.sj_no,
                 sjKepada: d.sj_kepada,
                 sjDriver: d.sj_driver,
                 sjWaktu: d.sj_waktu,
                 items: d.items,
-                sjRows: typeof d.sj_rows === 'string' ? JSON.parse(d.sj_rows) : d.sj_rows,
+                sjRows: (typeof d.sj_rows === 'string' ? JSON.parse(d.sj_rows) : d.sj_rows || []).filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT')),
                 sjSignatureAslap: d.sj_signature_aslap,
                 sjSignatureReceiver: d.sj_signature_receiver
               });
@@ -2782,6 +2786,7 @@ const [shipRes, bastRes, sjRes, orlepRes] = await Promise.allSettled([
                 uploadedAt: d.created_at || existing.uploadedAt || new Date().toISOString(),
                 receiverName: d.tester_name || d.orlep_panelis || existing.receiverName || '',
                 status: d.status || 'Lulus Uji',
+                is_locked: !!d.is_locked,
                 organoleptikRasa: d.organoleptik_rasa,
                 organoleptikAroma: d.organoleptik_aroma,
                 organoleptikTekstur: d.organoleptik_tekstur,
@@ -4043,7 +4048,7 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
           )}
 
           {/* scheduler form for admins */}
-          {currentUserRole === UserRole.ADMIN && (
+          {false && currentUserRole === UserRole.ADMIN && (
             <div className="bg-neutral-50 p-5 rounded-2xl border border-neutral-200/50 space-y-4">
               <div className="flex items-center justify-between border-b border-neutral-200 pb-2">
                 <h3 className="font-bold text-neutral-800 text-xs uppercase tracking-wider font-mono text-emerald-900">
@@ -4146,7 +4151,7 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
-              {[...allDayMenus]
+              {[...allDayMenus].filter(menu => menu.date.startsWith((selectedDate || '').slice(0, 7)))
                 .sort((a,b) => a.date.localeCompare(b.date))
                 .map((mn, idx) => (
                 <div 
@@ -4182,21 +4187,6 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
                     </ul>
                   </div>
 
-                  <div className="mt-4 pt-2.5 border-t border-neutral-100 flex items-center justify-between">
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-700 font-mono">
-                      620 Kcal
-                    </span>
-                    <button 
-                      onClick={() => {
-                        onSetMenu(mn.date, mn.menuList);
-                        triggerSuccessMsg(`SOP untuk tanggal ${mn.date} diaktifkan dengan menu: ${mn.menuList.join(', ')}!`);
-                      }}
-                      className="text-[10px] text-emerald-800 hover:text-emerald-950 font-bold flex items-center gap-0.5 hover:underline"
-                      title="Aktifkan menu dan tampilkan SOP harian"
-                    >
-                      Gunakan SOP <ArrowRight className="h-3 w-3" />
-                    </button>
-                  </div>
                 </div>
               ))}
             </div>
@@ -5291,6 +5281,7 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
           setShippingDocs={setShippingDocs}
           selectedDate={selectedDate || '2026-06-16'}
           allDayMenus={allDayMenus}
+          onSelectDate={onSelectDate}
         />
       );
     }
@@ -5304,6 +5295,7 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
           setShippingDocs={setShippingDocs}
           selectedDate={selectedDate || '2026-06-16'}
           allDayMenus={allDayMenus}
+          onSelectDate={onSelectDate}
         />
       );
     }
@@ -5317,6 +5309,7 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
           setShippingDocs={setShippingDocs}
           selectedDate={selectedDate || '2026-06-16'}
           allDayMenus={allDayMenus}
+          onSelectDate={onSelectDate}
         />
       );
     }
@@ -5349,6 +5342,7 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
           keluhanList={keluhanList}
           setKeluhanList={setKeluhanList}
           onSaveSopsToCloud={onSaveSopsToCloud}
+          onSelectDate={onSelectDate}
         />
       );
     }

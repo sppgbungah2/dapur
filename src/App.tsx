@@ -14,6 +14,7 @@ import { isSupabaseConfigured, supabase, mapUserToProfile, UserProfile } from '.
 import { safeLocalStorageSetItem, safeLocalStorageGetItem } from './lib/storage';
 import { useRouting } from './hooks/useRouting';
 import { useSopData } from './hooks/useSopData';
+import MonthlyDocumentCards from './components/MonthlyDocumentCards';
 
 export default function App() {
   // Clear deprecated local cache
@@ -36,6 +37,7 @@ export default function App() {
     setActiveTab, 
     selectedDate, 
     setSelectedDate, 
+    setSelectedMonth,
     activeSopDetail, 
     setActiveSopDetail 
   } = useRouting(loggedInUser);
@@ -174,6 +176,8 @@ export default function App() {
 
   // Listen for route changes (standard clean pathname routing with date & division slug support)
   useEffect(() => {
+    // Routing is owned by useRouting; retain legacy parser only as reference.
+    return;
     const handleRouteChange = () => {
       // Clean up legacy hash paths if present by rewriting them to standard paths
       if (window.location.hash) {
@@ -214,6 +218,8 @@ export default function App() {
 
   // Update browser URL path when activeTab, selectedDate, or activeSopDetail changes
   useEffect(() => {
+    // Routing is owned by useRouting; avoid competing role-prefixed URLs.
+    return;
     if (!loggedInUser) return;
     
     let prefix = 'admin';
@@ -635,7 +641,7 @@ export default function App() {
   const FEATURE_MENUS = [
     { num: 23, name: 'Dashboard Admin Utama', icon: LayoutDashboard, category: 'Kontrol Utama', badge: 'BARU' },
     { num: 15, name: 'SOP Harian Digital', icon: CheckCircle2, category: 'Kontrol Kualitas', badge: 'UTAMA' },
-    { num: 10, name: 'Menu Harian Gizi', icon: Calendar, category: 'Perencanaan' },
+    { num: 10, name: 'Master Menu', icon: Calendar, category: 'Perencanaan' },
     { num: 22, name: 'Master Jumlah Porsi', icon: Users, category: 'Perencanaan' },
     { num: 12, name: 'Stock Opname Gudang', icon: ClipboardList, category: 'Aset & Logistik' },
     { num: 17, name: 'Stok Operasional', icon: Package, category: 'Aset & Logistik' },
@@ -698,7 +704,7 @@ export default function App() {
         // 5. DRIVER
         if (email === 'driver@qomaruddin.com') {
           // SOP Harian, Menu Harian Gizi, Order Alat/Operasional, BAST, Surat Jalan, Keluhan, Dokumentasi Pengiriman Ompreng
-          return FEATURE_MENUS.filter(menu => [15, 10, 4, 5, 18, 19, 20, 21, 14].includes(menu.num));
+          return FEATURE_MENUS.filter(menu => [15, 10, 4, 5, 18, 19, 20, 14].includes(menu.num));
         }
 
         // Legacy/Default Fallbacks based on mapped roles
@@ -899,14 +905,14 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Quick date selector */}
+            {/* Global operational month selector. Daily navigation happens through month cards. */}
             <div className="flex items-center gap-1.5 bg-neutral-50 border border-neutral-200 rounded-xl px-3 py-1.5 shadow-2xs font-mono text-xs">
               <Calendar className="h-3.5 w-3.5 text-neutral-500" />
               <input
-                type="date"
-                value={selectedDate}
+                type="month"
+                value={selectedDate.slice(0, 7)}
                 onChange={e => {
-                  setSelectedDate(e.target.value);
+                  setSelectedMonth(e.target.value);
                   setActiveSopDetail(null);
                 }}
                 className="bg-transparent border-none outline-hidden focus:ring-0 font-semibold p-0 text-neutral-800"
@@ -959,6 +965,7 @@ export default function App() {
               currentUserRole={currentUserRole}
               loggedInUser={loggedInUser}
               selectedDate={selectedDate}
+              onSelectDate={(date) => { setSelectedDate(date); setActiveSopDetail(null); }}
               sops={sops}
               setSops={setSops}
               onGoToTab={setActiveTab}
@@ -980,6 +987,7 @@ export default function App() {
           ) : loggedInUser.isCoordinator ? (
             /* Coordinator Empty State: No SOP generated for this date yet */
             <div className="bg-white p-12 rounded-3xl border border-neutral-100 shadow-xl text-center space-y-6 max-w-2xl mx-auto my-12">
+              <MonthlyDocumentCards table="sops" selectedDate={selectedDate} onSelectDate={(date) => { setSelectedDate(date); setActiveSopDetail(null); }} />
               <div className="w-16 h-16 bg-amber-50 border border-amber-200 rounded-full flex items-center justify-center mx-auto text-amber-600">
                 <ShieldAlert className="w-8 h-8 animate-pulse" />
               </div>
@@ -991,24 +999,12 @@ export default function App() {
                   SOP harian untuk divisi <strong className="text-emerald-800">{loggedInUser.coordinatorDivision}</strong> pada tanggal {selectedDate} belum dipublikasikan oleh Supervisor / Admin.
                 </p>
               </div>
-              <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-4">
-                <button
-                  onClick={() => {
-                    const menuItems = getMenuForSelectedDate()?.menuList || ['Nasi Putih', 'Lauk Protein', 'Lauk Nabati', 'Sayuran Segar'];
-                    handleGenerateSOPs(selectedDate);
-                  }}
-                  className="bg-emerald-800 hover:bg-emerald-950 text-white font-bold text-sm px-6 py-2.5 rounded-xl shadow-xs transition-colors w-full sm:w-auto"
-                >
-                  Inisialisasi SOP Mandiri
-                </button>
-                <span className="text-xs text-neutral-400">
-                  Atau hubungi Supervisor/Admin Utama di Ruang Admin.
-                </span>
-              </div>
+              <p className="pt-4 text-xs font-semibold text-amber-700">Inisiasi SOP hanya dilakukan oleh Admin dari Dashboard Admin.</p>
             </div>
           ) : (
             /* SOP Management Page */
             <div className="space-y-6">
+              <MonthlyDocumentCards table="sops" selectedDate={selectedDate} onSelectDate={(date) => { setSelectedDate(date); setActiveSopDetail(null); }} />
               {/* Context Banner */}
               <div className="bg-white p-5 rounded-2xl border border-neutral-100 shadow-3xs flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">

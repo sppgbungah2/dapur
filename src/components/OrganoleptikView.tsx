@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { DayMenu, UserRole } from '../types';
 import { UserProfile } from '../lib/supabase';
+import MonthlyDocumentCards from './MonthlyDocumentCards';
 import { getRecipientName, getDefaultReceiptTime } from '../presetData';
 import SignaturePad from './SignaturePad';
 import OfficialStamp from './OfficialStamp';
@@ -16,6 +17,7 @@ interface OrganoleptikViewProps {
   loggedInUser?: UserProfile | null;
   currentUserRole: UserRole;
   allDayMenus?: DayMenu[];
+  onSelectDate?: (date: string) => void;
 }
 
 export default function OrganoleptikView({
@@ -24,7 +26,8 @@ export default function OrganoleptikView({
   selectedDate,
   loggedInUser,
   currentUserRole,
-  allDayMenus = []
+  allDayMenus = [],
+  onSelectDate
 }: OrganoleptikViewProps) {
   const [activeDoc, setActiveDoc] = useState<any | null>(null);
   const [activeDateView, setActiveDateView] = useState<string | null>(null);
@@ -60,6 +63,7 @@ export default function OrganoleptikView({
   };
 
   const restrictedLocation = loggedInUser?.email ? getPenerimaLocation(loggedInUser.email) : "";
+  const isAdminOrAslap = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.ASLAP;
   const isAkunUtama = currentUserRole === UserRole.ADMIN || (loggedInUser?.email && ['punkysme@gmail.com', 'ketua@sppg.com'].includes(loggedInUser.email.toLowerCase().trim()));
 
   // Keep activeDoc in sync with updated shippingDocs from parent state
@@ -85,7 +89,14 @@ export default function OrganoleptikView({
         }
       }
     }
-  }, [restrictedLocation, shippingDocs, selectedDate, activeDoc]);
+  }, [restrictedLocation, shippingDocs, viewDate, activeDoc]);
+
+  useEffect(() => {
+    if (isAdminOrAslap || activeDoc) return;
+    const published = shippingDocs.filter(d => d.type === 'organoleptik' && d.date === viewDate && ['published', 'selesai', 'completed'].includes(String(d.status).toLowerCase()));
+    const target = restrictedLocation ? published.find(d => d.orlepDesa === restrictedLocation) : published[0];
+    if (target) setActiveDoc(target);
+  }, [shippingDocs, viewDate, restrictedLocation, isAdminOrAslap, activeDoc]);
 
   const getIndonesianDateText = (dateStr: string) => {
     if (!dateStr) return { dayName: 'Rabu', dateNum: '15', monthName: 'Juli', yearNum: '2026' };
@@ -311,9 +322,10 @@ export default function OrganoleptikView({
 
   // If viewing a document in full-depth
   if (activeDoc) {
-    const isLocked = activeDoc.status === 'Selesai' || activeDoc.status === 'Terkunci';
+    const isLocked = activeDoc.is_locked === true || activeDoc.isLocked === true || activeDoc.status === 'Selesai' || activeDoc.status === 'Terkunci';
     return (
       <div className="space-y-6 animate-fade-in" id="orlep-printed-view">
+        {!isAdminOrAslap && <MonthlyDocumentCards table="organoleptik_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDoc(null); setActiveDateView(date); onSelectDate?.(date); }} />}
         {/* Sticky Action Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-neutral-50 p-4 rounded-2xl border border-neutral-200 shadow-3xs print:hidden">
           {!restrictedLocation && (
@@ -762,6 +774,7 @@ export default function OrganoleptikView({
 
   // Filtered list for display in the grid
   const filteredDocs = dateDocs.filter(doc => {
+    if (!isAdminOrAslap && !['published', 'selesai', 'completed'].includes(String(doc.status).toLowerCase())) return false;
     // 1. Filter Penerima
     if (filterPenerima !== 'All' && doc.orlepDesa !== filterPenerima) {
       return false;
@@ -837,7 +850,7 @@ export default function OrganoleptikView({
   const filteredDocsByDate = filteredDocs.filter(d => d.date === viewDate);
   // Grid of Date Cards View
   if (!activeDateView) {
-    const dates = [...(allDayMenus || [])].sort((a,b) => a.date.localeCompare(b.date));
+    const dates = [...(allDayMenus || [])].filter(menu => menu.date.startsWith(selectedDate.slice(0, 7))).sort((a,b) => a.date.localeCompare(b.date));
     
     return (
       <div className="space-y-6 animate-fade-in">
@@ -866,7 +879,7 @@ export default function OrganoleptikView({
             return (
               <div 
                 key={mn.date}
-                onClick={() => setActiveDateView(mn.date)}
+                onClick={() => { setActiveDateView(mn.date); onSelectDate?.(mn.date); }}
                 className="bg-white border border-neutral-200 hover:border-emerald-600 rounded-2xl p-5 shadow-3xs cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group flex flex-col justify-between"
               >
                 <div>
@@ -896,6 +909,7 @@ export default function OrganoleptikView({
 
   return (
     <div className="space-y-6 animate-fade-in" id="orlep-dashboard">
+      <MonthlyDocumentCards table="organoleptik_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDateView(date); onSelectDate?.(date); }} />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -935,20 +949,12 @@ export default function OrganoleptikView({
               Lembar pengujian kelayakan rasa & thermal CCP belum diinisialisasi untuk tanggal {viewDate}.
             </p>
           </div>
-          {isAkunUtama && (
-            <button
-              onClick={handleInitializeOrganoleptik}
-              className="bg-emerald-800 hover:bg-emerald-950 text-white text-xs font-bold px-6 py-3 rounded-xl text-center inline-flex items-center gap-2 cursor-pointer shadow-sm active:scale-[0.98] transition-transform"
-            >
-              <Plus className="h-4 w-4" />
-              + Inisialisasi Uji Organoleptik Hari Ini (6 Penerima)
-            </button>
-          )}
+          <p className="text-xs font-semibold text-amber-700">Inisiasi hanya dilakukan oleh Admin dari Dashboard Admin.</p>
         </div>
       ) : (
         <div className="space-y-6">
           {/* Panel Filter Rekapitulasi & Kontrol Organoleptik */}
-          <div className="bg-neutral-50/60 border border-neutral-200 rounded-3xl p-6 space-y-6">
+          <div className="hidden bg-neutral-50/60 border border-neutral-200 rounded-3xl p-6 space-y-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-200 pb-4">
               <div>
                 <h3 className="text-sm font-bold text-neutral-800 uppercase tracking-wider flex items-center gap-1.5">

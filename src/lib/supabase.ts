@@ -34,6 +34,24 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
+/**
+ * Returns a calendar date, never a UTC-converted timestamp.  Operational dates
+ * are stored as DATE (YYYY-MM-DD) and are interpreted in Asia/Jakarta.
+ */
+export function getLocalDateString(date: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(date);
+  const value = (kind: string) => parts.find(part => part.type === kind)?.value || '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+/** Validate input from <input type="date"> without Date parsing. */
+export function asOperationalDate(value: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Tanggal operasional harus berformat YYYY-MM-DD.');
+  return value;
+}
+
 // User custom profile mapping helper
 export interface UserProfile {
   id: string;

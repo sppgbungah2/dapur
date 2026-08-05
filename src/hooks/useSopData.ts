@@ -196,6 +196,7 @@ export function useSopData(selectedDate: string) {
             signatureCoordinatorUrl: s.signature_coordinator_url || '',
             signedCoordinatorAt: s.signed_coordinator_at || null,
             status: s.status || 'aktif',
+            isLocked: !!s.is_locked,
             updatedAt: s.updated_at || new Date().toISOString()
           };
         });

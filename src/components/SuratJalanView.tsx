@@ -10,6 +10,7 @@ import { DEFAULT_PORTIONS, PortionConfig } from './PortionMasterView';
 import { getRecipientName, getDefaultReceiptTime } from '../presetData';
 import SignaturePad from './SignaturePad';
 import OfficialStamp from './OfficialStamp';
+import MonthlyDocumentCards from './MonthlyDocumentCards';
 
 interface SuratJalanViewProps {
   shippingDocs: any[];
@@ -18,6 +19,7 @@ interface SuratJalanViewProps {
   loggedInUser?: UserProfile | null;
   currentUserRole: UserRole;
   allDayMenus?: DayMenu[];
+  onSelectDate?: (date: string) => void;
 }
 
 export default function SuratJalanView({
@@ -26,7 +28,8 @@ export default function SuratJalanView({
   selectedDate,
   loggedInUser,
   currentUserRole,
-  allDayMenus = []
+  allDayMenus = [],
+  onSelectDate
 }: SuratJalanViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeDoc, setActiveDoc] = useState<any | null>(null);
@@ -72,6 +75,9 @@ export default function SuratJalanView({
 
   // Filtered list based on role and choices
   const filteredDocs = allSjDocs.filter(doc => {
+    const status = String(doc.status).toLowerCase();
+    const mayOpenDraft = currentUserRole === UserRole.DRIVER;
+    if (!isAdminOrAslap && !['published', 'selesai', 'completed'].includes(status) && !(mayOpenDraft && status === 'draft')) return false;
     // 1. Role boundaries
     if (restrictedLocation && doc.sjKepada !== restrictedLocation) return false;
     
@@ -125,7 +131,34 @@ export default function SuratJalanView({
         }
       }
     }
-  }, [restrictedLocation, shippingDocs, selectedDate, activeDoc]);
+  }, [restrictedLocation, shippingDocs, viewDate, activeDoc]);
+
+  // Driver/penerima do not need an admin board: open the permitted published form directly.
+  useEffect(() => {
+    if (isAdminOrAslap || activeDoc) return;
+    const accessible = shippingDocs.filter(d => d.type === 'surat_jalan' && d.date === viewDate && (['published', 'selesai', 'completed'].includes(String(d.status).toLowerCase()) || (currentUserRole === UserRole.DRIVER && String(d.status).toLowerCase() === 'draft')));
+    const target = restrictedLocation ? accessible.find(d => d.sjKepada === restrictedLocation) : accessible[0];
+    if (target) setActiveDoc(target);
+  }, [shippingDocs, viewDate, restrictedLocation, isAdminOrAslap, activeDoc, currentUserRole]);
+
+  // Hydrate selected driver documents directly from Supabase; monthly status cards and forms share one source of truth.
+  useEffect(() => {
+    if (currentUserRole !== UserRole.DRIVER || !isSupabaseConfigured || !supabase) return;
+    if (shippingDocs.some(d => d.type === 'surat_jalan' && d.date === viewDate)) return;
+    let alive = true;
+    supabase.from('surat_jalan_docs').select('*').eq('date', viewDate).then(({ data, error }) => {
+      if (!alive || error || !data?.length) return;
+      const hydrated = data.map((d: any) => ({
+        id: d.id, type: 'surat_jalan', date: d.date, status: d.status, is_locked: !!d.is_locked,
+        sjNo: d.sj_no, sjKepada: d.sj_kepada, sjDriver: d.sj_driver, sjWaktu: d.sj_waktu,
+        sjRows: (typeof d.sj_rows === 'string' ? JSON.parse(d.sj_rows) : d.sj_rows || []).filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT')),
+        items: d.items || [], imageUrl: d.photo_url || '', comments: d.comments || '', uploadedBy: d.uploaded_by || '',
+        sjSignatureAslap: d.sj_signature_aslap, sjSignatureReceiver: d.sj_signature_receiver, receiverName: d.sj_kepada || ''
+      }));
+      setShippingDocs(prev => [...prev.filter(d => !(d.type === 'surat_jalan' && d.date === viewDate)), ...hydrated]);
+    });
+    return () => { alive = false; };
+  }, [currentUserRole, viewDate, shippingDocs, setShippingDocs]);
 
   const getIndonesianDateText = (dateStr: string) => {
     if (!dateStr) return { dayName: 'Rabu', dateNum: '15', monthName: 'Juli', yearNum: '2026' };
@@ -359,6 +392,18 @@ export default function SuratJalanView({
   };
 
   // Update a single field on the active document
+  const persistSuratJalan = async (doc: any) => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const { error } = await supabase.from('surat_jalan_docs').upsert({
+      id: doc.id, date: doc.date, sj_no: doc.sjNo, sj_kepada: doc.sjKepada, sj_driver: doc.sjDriver,
+      sj_waktu: doc.sjWaktu, items: doc.items || [], sj_rows: (doc.sjRows || []).filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT')),
+      photo_url: doc.imageUrl || '', comments: doc.comments || '', sj_signature_aslap: doc.sjSignatureAslap || null,
+      sj_signature_receiver: doc.sjSignatureReceiver || null, status: doc.status || 'published', is_locked: !!doc.is_locked,
+      uploaded_by: doc.uploadedBy || ''
+    });
+    if (error) setErrorMsg(`Gagal menyimpan Surat Jalan ke Supabase: ${error.message}`);
+  };
+
   const handleFieldChange = (field: string, value: any) => {
     if (!activeDoc) return;
     const updated = { ...activeDoc, [field]: value };
@@ -366,6 +411,7 @@ export default function SuratJalanView({
     
     // Save to parent list
     setShippingDocs(prev => prev.map(d => d.id === activeDoc.id ? updated : d));
+    void persistSuratJalan(updated);
   };
 
   // Update rows on Surat Jalan table
@@ -451,12 +497,13 @@ export default function SuratJalanView({
 
     const updated = { 
       ...activeDoc, 
-      status: 'Terkunci',
+      status: 'Terkunci', is_locked: true,
       sjSignatureAslap: sigAslap,
       sjSignatureReceiver: sigReceiver
     };
     setActiveDoc(updated);
     setShippingDocs(prev => prev.map(d => d.id === activeDoc.id ? updated : d));
+    void persistSuratJalan(updated);
     setSuccessMsg('Berkas Surat Jalan berhasil ditandatangani, dibubuhi Stempel Resmi, dan terkunci permanen!');
     setTimeout(() => setSuccessMsg(null), 4000);
   };
@@ -552,7 +599,7 @@ export default function SuratJalanView({
       }
       
       if (newRows.length > 0) {
-        handleFieldChange('sjRows', newRows);
+        handleFieldChange('sjRows', newRows.filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT')));
         alert(`Berhasil menarik data porsi terbaru untuk ${sch}!`);
       }
     } catch (err) {
@@ -566,10 +613,11 @@ export default function SuratJalanView({
 
   // If viewing a document in full-depth
   if (activeDoc) {
-    const isLocked = activeDoc.status === 'Selesai' || activeDoc.status === 'Terkunci';
+    const isLocked = activeDoc.is_locked === true || activeDoc.isLocked === true || activeDoc.status === 'Selesai' || activeDoc.status === 'Terkunci';
     const isFieldReadOnly = isLocked || currentUserRole === UserRole.PENERIMA;
     return (
       <div className="space-y-6 animate-fade-in" id="sj-printed-view">
+        {!isAdminOrAslap && <MonthlyDocumentCards table="surat_jalan_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDoc(null); setActiveDateView(date); onSelectDate?.(date); }} />}
         {/* Sticky Action Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-neutral-50 p-4 rounded-2xl border border-neutral-200 shadow-3xs print:hidden">
           {!restrictedLocation && (
@@ -1042,7 +1090,7 @@ export default function SuratJalanView({
   // Grid of Date Cards View
   if (!activeDateView) {
     // Collect all dates from menus
-    const dates = [...allDayMenus].sort((a,b) => a.date.localeCompare(b.date));
+    const dates = [...allDayMenus].filter(menu => menu.date.startsWith(selectedDate.slice(0, 7))).sort((a,b) => a.date.localeCompare(b.date));
     
     return (
       <div className="space-y-6 animate-fade-in">
@@ -1068,7 +1116,7 @@ export default function SuratJalanView({
             return (
               <div 
                 key={mn.date}
-                onClick={() => setActiveDateView(mn.date)}
+                onClick={() => { setActiveDateView(mn.date); onSelectDate?.(mn.date); }}
                 className="bg-white border border-neutral-200 hover:border-emerald-600 rounded-2xl p-5 shadow-3xs cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group flex flex-col justify-between"
               >
                 <div>
@@ -1114,6 +1162,7 @@ export default function SuratJalanView({
 
   return (
     <div className="space-y-6 animate-fade-in" id="sj-dashboard">
+      <MonthlyDocumentCards table="surat_jalan_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDateView(date); onSelectDate?.(date); }} />
       
       {/* 1. Header & Title Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1279,15 +1328,7 @@ export default function SuratJalanView({
               Berkas digital Surat Jalan pengiriman logistik untuk 6 lokasi sasaran belum diinisialisasi untuk tanggal {viewDate}.
             </p>
           </div>
-          {isAkunUtama && (
-            <button
-              onClick={handleInitializeSuratJalan}
-              className="bg-emerald-800 hover:bg-emerald-950 text-white text-xs font-bold px-6 py-3 rounded-xl text-center inline-flex items-center gap-2 cursor-pointer shadow-sm active:scale-[0.98] transition-transform"
-            >
-              <Plus className="h-4 w-4" />
-              Inisialisasi 6 Berkas Surat Jalan Sekarang
-            </button>
-          )}
+          <p className="text-xs font-semibold text-amber-700">Inisiasi hanya dilakukan oleh Admin dari Dashboard Admin.</p>
         </div>
       ) : filteredDocsByDate.length === 0 ? (
         <div className="p-16 text-center text-xs text-neutral-400 space-y-2 bg-white rounded-3xl border border-neutral-100 shadow-2xs">

@@ -57,6 +57,7 @@ export interface SOPDocument {
   signedCoordinatorAt: string | null;
   
   status: 'draft' | 'aktif' | 'selesai'; // draft, active (ready to check), selesai (signed & recorded)
+  isLocked?: boolean;
   updatedAt: string;
 }
 
@@ -93,4 +94,3 @@ export interface StockItem {
   uom: string;
   expiredDate?: string;
 }
-

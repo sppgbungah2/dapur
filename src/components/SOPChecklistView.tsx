@@ -29,6 +29,7 @@ export default function SOPChecklistView({
   onSaveSopsToCloud
 }: SOPChecklistViewProps) {
   const isAdmin = loggedInUser?.email === 'maghfurmunif@gmail.com' || loggedInUser?.email === 'punkysme@gmail.com' || currentUserRole === UserRole.ADMIN || loggedInUser?.role === UserRole.ADMIN;
+  const isLocked = sop.isLocked === true || sop.status === 'selesai';
   const [activeSignType, setActiveSignType] = useState<'supervisor' | 'coordinator' | null>(null);
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskCategory, setNewTaskCategory] = useState<'persiapan' | 'aktif' | 'penutup'>('aktif');
@@ -59,7 +60,7 @@ export default function SOPChecklistView({
   };
 
   const handleToggleTask = (taskId: string) => {
-    if (sop.status === 'selesai') return; // Cannot modify if finalized
+    if (isLocked) return;
     
     const updatedTasks = sop.tasks.map(t => 
       t.id === taskId ? { ...t, completed: !t.completed } : t
@@ -81,7 +82,7 @@ export default function SOPChecklistView({
       alert('Hanya Admin Utama yang berhak menambah atau mengubah butir SOP!');
       return;
     }
-    if (!newTaskText.trim() || sop.status === 'selesai') return;
+    if (!newTaskText.trim() || isLocked) return;
 
     const newTask = {
       id: `task-${sop.id}-${Date.now()}`,
@@ -101,7 +102,7 @@ export default function SOPChecklistView({
   };
 
   const handleDeleteTask = (taskId: string) => {
-    if (sop.status === 'selesai') return;
+    if (isLocked) return;
     if (!isAdmin) {
       alert('Hanya Admin Utama yang berhak menghapus butir SOP!');
       return;
@@ -461,7 +462,7 @@ export default function SOPChecklistView({
                             type="checkbox"
                             checked={task.completed}
                             onChange={() => handleToggleTask(task.id)}
-                            disabled={sop.status === 'selesai'}
+                            disabled={isLocked}
                             className="mt-0.5 h-4.5 w-4.5 accent-emerald-800 rounded-sm border-neutral-300 focus:ring-emerald-500 shrink-0 cursor-pointer disabled:cursor-not-allowed"
                           />
                           <div className="flex-1 flex justify-between gap-2 min-w-0">
@@ -496,7 +497,7 @@ export default function SOPChecklistView({
                             type="checkbox"
                             checked={task.completed}
                             onChange={() => handleToggleTask(task.id)}
-                            disabled={sop.status === 'selesai'}
+                            disabled={isLocked}
                             className="mt-0.5 h-4.5 w-4.5 accent-emerald-800 rounded-sm border-neutral-300 focus:ring-emerald-500 shrink-0 cursor-pointer disabled:cursor-not-allowed"
                           />
                           <div className="flex-1 flex justify-between gap-2 min-w-0">
@@ -531,7 +532,7 @@ export default function SOPChecklistView({
                             type="checkbox"
                             checked={task.completed}
                             onChange={() => handleToggleTask(task.id)}
-                            disabled={sop.status === 'selesai'}
+                            disabled={isLocked}
                             className="mt-0.5 h-4.5 w-4.5 accent-emerald-800 rounded-sm border-neutral-300 focus:ring-emerald-500 shrink-0 cursor-pointer disabled:cursor-not-allowed"
                           />
                           <div className="flex-1 flex justify-between gap-2 min-w-0">
@@ -651,10 +652,10 @@ export default function SOPChecklistView({
                   type="text"
                   value={sop.signerSupervisor}
                   onChange={e => {
-                    if (sop.status === 'selesai') return;
+                    if (isLocked) return;
                     onUpdateSOP({ ...sop, signerSupervisor: e.target.value });
                   }}
-                  disabled={sop.status === 'selesai'}
+                  disabled={isLocked}
                   className="font-bold text-center border-b border-black border-dashed w-3/4 mx-auto block pb-0.5 outline-hidden focus:border-emerald-600 bg-transparent text-sm"
                   placeholder="Nama Penanggung Jawab"
                 />
@@ -701,10 +702,10 @@ export default function SOPChecklistView({
                   type="text"
                   value={sop.signerCoordinator}
                   onChange={e => {
-                    if (sop.status === 'selesai') return;
+                    if (isLocked) return;
                     onUpdateSOP({ ...sop, signerCoordinator: e.target.value });
                   }}
-                  disabled={sop.status === 'selesai'}
+                  disabled={isLocked}
                   className="font-bold text-center border-b border-black border-dashed w-3/4 mx-auto block pb-0.5 outline-hidden focus:border-emerald-600 bg-transparent text-sm"
                   placeholder="Nama Koordinator Lapangan"
                 />

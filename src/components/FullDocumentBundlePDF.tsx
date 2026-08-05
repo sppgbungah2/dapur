@@ -73,7 +73,7 @@ export default function FullDocumentBundlePDF({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-neutral-900/80 backdrop-blur-sm flex flex-col overflow-y-auto animate-fade-in print:p-0 print:static print:bg-white print:overflow-visible">
+    <div id="full-document-bundle-print-overlay" className="fixed print-overlay-container inset-0 z-50 bg-neutral-900/80 backdrop-blur-sm flex flex-col overflow-y-auto animate-fade-in print:p-0 print:static print:bg-white print:overflow-visible">
       {/* Top Bar - Hidden during print */}
       <div className="sticky top-0 z-50 bg-neutral-900 text-white p-4 border-b border-neutral-800 flex items-center justify-between shadow-lg no-print">
         <div className="flex items-center gap-3">

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, asOperationalDate } from '../lib/supabase';
+import { initializeOperationalDocuments } from '../lib/operationalLifecycle';
 import { PortionConfig, DEFAULT_PORTIONS } from './PortionMasterView';
 import { CheckCircle2, Save, FileText, Loader2, AlertCircle } from 'lucide-react';
-import { generateInitialDocsAsync, updateExistingDocsWithPortions } from '../utils/generateDocs';
+import { updateExistingDocsWithPortions } from '../utils/generateDocs';
 import { DayMenu } from '../types';
 
 interface Props {
@@ -36,6 +37,7 @@ export default function PerencanaanMenuPorsi({
   const [initSJStatus, setInitSJStatus] = useState<'idle'|'loading'|'success'>('idle');
   const [initBASTStatus, setInitBASTStatus] = useState<'idle'|'loading'|'success'>('idle');
   const [initOrlepStatus, setInitOrlepStatus] = useState<'idle'|'loading'|'success'>('idle');
+  const [initError, setInitError] = useState<string | null>(null);
 
   // Load Menu and Portions
   useEffect(() => {
@@ -85,6 +87,31 @@ export default function PerencanaanMenuPorsi({
     if (hasOrlep) setInitOrlepStatus('success');
   }, [selectedDate, shippingDocs]);
 
+  // Source of truth for Step 2 is Supabase, not the local shipping-document cache.
+  useEffect(() => {
+    let alive = true;
+    const syncInitiationStatus = async () => {
+      if (!isSupabaseConfigured || !supabase) return;
+      const [sj, bast, orlep, sop] = await Promise.all([
+        supabase.from('surat_jalan_docs').select('id', { count: 'exact', head: true }).eq('date', selectedDate),
+        supabase.from('bast_docs').select('id', { count: 'exact', head: true }).eq('date', selectedDate),
+        supabase.from('organoleptik_docs').select('id', { count: 'exact', head: true }).eq('date', selectedDate),
+        supabase.from('sops').select('id', { count: 'exact', head: true }).eq('date', selectedDate)
+      ]);
+      if (!alive) return;
+      if (sj.error || bast.error || orlep.error || sop.error) {
+        setInitError(`Gagal menyinkronkan status inisiasi: ${(sj.error || bast.error || orlep.error || sop.error)?.message}`);
+        return;
+      }
+      setInitSJStatus((sj.count || 0) > 0 ? 'success' : 'idle');
+      setInitBASTStatus((bast.count || 0) > 0 ? 'success' : 'idle');
+      setInitOrlepStatus((orlep.count || 0) > 0 ? 'success' : 'idle');
+      setInitSOPStatus((sop.count || 0) > 0 ? 'success' : 'idle');
+    };
+    syncInitiationStatus();
+    return () => { alive = false; };
+  }, [selectedDate]);
+
   const handleSave = async () => {
     setIsSaving(true);
     const menuArr = menuText.split(',').map(m => m.trim()).filter(m => m !== '');
@@ -120,47 +147,20 @@ export default function PerencanaanMenuPorsi({
     onSuccess('Berhasil menyimpan Rencana Menu & PM serta memperbarui SJ/BAST di Database!');
   };
 
-  const handleInitSOP = async () => {
-    setInitSOPStatus('loading');
+  const handleInitializeAll = async () => {
+    setInitError(null);
+    setInitSOPStatus('loading'); setInitSJStatus('loading'); setInitBASTStatus('loading'); setInitOrlepStatus('loading');
     const menuArr = menuText.split(',').map(m => m.trim()).filter(m => m !== '');
-    onGenerateSOPs(selectedDate, menuArr);
-    
-    // Assume success for now since onGenerateSOPs handles DB logic
-    setTimeout(() => {
-      setInitSOPStatus('success');
-      onSuccess('Berhasil menginisialisasi Dokumen SOP Harian!');
-    }, 1000);
-  };
-
-  const handleInitDocType = async (type: 'SJ' | 'BAST' | 'ORLEP') => {
-    if (type === 'SJ') setInitSJStatus('loading');
-    if (type === 'BAST') setInitBASTStatus('loading');
-    if (type === 'ORLEP') setInitOrlepStatus('loading');
-
-    const menuArr = menuText.split(',').map(m => m.trim()).filter(m => m !== '');
-    const menuStr = menuArr.join(', ');
-
-    let targetType: 'surat_jalan' | 'serah_terima' | 'organoleptik' | undefined;
-    if (type === 'SJ') targetType = 'surat_jalan';
-    if (type === 'BAST') targetType = 'serah_terima';
-    if (type === 'ORLEP') targetType = 'organoleptik';
-
-    const updatedDocs = await generateInitialDocsAsync(selectedDate, shippingDocs, menuStr, 'admin@sppg.com', targetType);
-    setShippingDocs(updatedDocs);
-    
-    // Sync to DB explicitly for safety
-    if (isSupabaseConfigured && supabase) {
-       // Just basic push for the newly created ones. The main sync logic handles it, but let's be safe.
-       // The mock module syncs shipping docs in background, but we want it immediate.
-       // Actually, the main app has a sync hook. So setting state is enough.
+    try {
+      const result = await initializeOperationalDocuments(asOperationalDate(selectedDate), menuArr, 'admin@sppg.com');
+      setShippingDocs(prev => [...prev.filter(d => d.date !== selectedDate), ...result.docs.map(d => ({ ...d, status: 'draft', is_locked: false }))]);
+      onGenerateSOPs(selectedDate, menuArr);
+      setInitSOPStatus('success'); setInitSJStatus('success'); setInitBASTStatus('success'); setInitOrlepStatus('success');
+      onSuccess('Semua draft berhasil tersimpan di Supabase.');
+    } catch (err) {
+      setInitError(`Inisiasi gagal: ${err instanceof Error ? err.message : String(err)}`);
+      setInitSOPStatus('idle'); setInitSJStatus('idle'); setInitBASTStatus('idle'); setInitOrlepStatus('idle');
     }
-
-    setTimeout(() => {
-      if (type === 'SJ') setInitSJStatus('success');
-      if (type === 'BAST') setInitBASTStatus('success');
-      if (type === 'ORLEP') setInitOrlepStatus('success');
-      onSuccess(`Berhasil menginisialisasi ${type} ke Database!`);
-    }, 800);
   };
 
   const updatePortion = (loc: string, field: string, val: number) => {
@@ -265,10 +265,15 @@ export default function PerencanaanMenuPorsi({
             <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             Langkah 2: Inisiasi Dokumen (Otomatis Generate ke Database)
           </h2>
+          {initError && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800"><AlertCircle className="inline h-4 w-4 mr-1" />{initError}</div>}
+          <button onClick={handleInitializeAll} disabled={initSOPStatus === 'loading' || initSOPStatus === 'success'} className="w-full mb-4 bg-emerald-700 hover:bg-emerald-800 disabled:bg-emerald-300 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2">
+            {initSOPStatus === 'loading' ? <Loader2 className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+            {initSOPStatus === 'success' ? 'Sudah Diinisiasi di Database' : 'Inisiasi Surat-Surat ke Supabase'}
+          </button>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             
             <button
-              onClick={handleInitSOP}
+              onClick={handleInitializeAll}
               disabled={initSOPStatus === 'success' || initSOPStatus === 'loading'}
               className={`p-4 rounded-xl border-2 flex flex-col items-center justify-center gap-2 font-bold transition-all ${
                 initSOPStatus === 'success' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 
@@ -282,7 +287,7 @@ export default function PerencanaanMenuPorsi({
             </button>
 
             <button
-              onClick={() => handleInitDocType('SJ')}
+              onClick={handleInitializeAll}
               disabled={initSJStatus === 'success' || initSJStatus === 'loading'}
               className={`p-4 rounded-xl border-2 flex flex-col items-center justify-center gap-2 font-bold transition-all ${
                 initSJStatus === 'success' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 
@@ -296,7 +301,7 @@ export default function PerencanaanMenuPorsi({
             </button>
 
             <button
-              onClick={() => handleInitDocType('BAST')}
+              onClick={handleInitializeAll}
               disabled={initBASTStatus === 'success' || initBASTStatus === 'loading'}
               className={`p-4 rounded-xl border-2 flex flex-col items-center justify-center gap-2 font-bold transition-all ${
                 initBASTStatus === 'success' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 
@@ -310,7 +315,7 @@ export default function PerencanaanMenuPorsi({
             </button>
 
             <button
-              onClick={() => handleInitDocType('ORLEP')}
+              onClick={handleInitializeAll}
               disabled={initOrlepStatus === 'success' || initOrlepStatus === 'loading'}
               className={`p-4 rounded-xl border-2 flex flex-col items-center justify-center gap-2 font-bold transition-all ${
                 initOrlepStatus === 'success' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 

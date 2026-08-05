@@ -140,6 +140,7 @@ export async function generateInitialDocsAsync(
           ];
         }
         
+        sjRows = sjRows.filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT'));
         newDocsCreated.push({
           id: `sj-${selectedDate}-${idx}-${nowTs}`,
           type: 'surat_jalan',
@@ -252,11 +253,10 @@ export function updateExistingDocsWithPortions(currentDocs: any[], date: string,
       }
       return {
         ...doc,
-        sjRows
+        sjRows: sjRows.filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT'))
       };
     }
 
     return doc;
   });
 }
-
