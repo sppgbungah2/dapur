@@ -430,30 +430,15 @@ export default function DailyReportPDF({
           }
         `}</style>
 
-        {/* Kop Surat Resmi Yayasan & BGN */}
+        {/* Kop surat yang sama dengan form SOP dan organoleptik harian. */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 border-b-4 border-double border-neutral-950 pb-4 mb-6 text-center sm:text-left pdf-avoid-break">
-          {/* Logo BGN Left */}
+          {/* Logo Yayasan Left */}
           <div className="flex items-center justify-center shrink-0 w-16 h-16 sm:w-20 sm:h-20">
             <img 
-              src="https://www.bgn.go.id/logo-bgn.png" 
-              alt="Logo BGN" 
+              src="/logo%20yayasan.png"
+              alt="Logo Yayasan Qomaruddin"
               className="max-h-16 sm:max-h-20 max-w-16 sm:max-w-20 object-contain select-none shrink-0" 
-              referrerPolicy="no-referrer"
-              onError={(e) => {
-                const target = e.currentTarget;
-                target.style.display = 'none';
-                const parent = target.parentElement;
-                if (parent) {
-                  const fallback = parent.querySelector('.bgn-fallback');
-                  if (fallback) (fallback as HTMLElement).style.display = 'flex';
-                }
-              }}
             />
-            <div className="bgn-fallback hidden h-14 w-14 sm:h-16 sm:w-16 rounded-full border-2 border-emerald-900 bg-emerald-800 text-white flex-col items-center justify-center text-center p-1 font-bold text-[8px] uppercase tracking-tighter shrink-0 shadow-xs">
-              <span className="font-black text-[10px]">BGN</span>
-              <span>BADAN GIZI</span>
-              <span>NASIONAL</span>
-            </div>
           </div>
 
           {/* Header Title Center */}
@@ -472,11 +457,11 @@ export default function DailyReportPDF({
             </p>
           </div>
 
-          {/* Logo Qomaruddin Right */}
+          {/* Logo SPPG Right */}
           <div className="flex items-center justify-center shrink-0 w-16 h-16 sm:w-20 sm:h-20">
             <img 
-              src="/logo.png" 
-              alt="Logo PP Qomaruddin" 
+              src="/logo%20sppg.png"
+              alt="Logo SPPG"
               className="max-h-16 sm:max-h-20 max-w-16 sm:max-w-20 object-contain select-none shrink-0 p-0.5" 
               referrerPolicy="no-referrer"
               onError={(e) => {

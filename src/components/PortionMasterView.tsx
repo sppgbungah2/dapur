@@ -155,7 +155,7 @@ export default function PortionMasterView({
 
       // Automatically update Surat Jalan & BAST documents if they exist for selectedDate
       if (setShippingDocs && shippingDocs.length > 0) {
-        const updatedDocs = updateExistingDocsWithPortions(shippingDocs, selectedDate, portions);
+        const updatedDocs = updateExistingDocsWithPortions(shippingDocs, selectedDate, portions, menuList);
         setShippingDocs(updatedDocs);
       }
 

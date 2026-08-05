@@ -2232,6 +2232,8 @@ export default function MockModules({
               bast_barang: (item as any).bastBarang || '',
               bast_jumlah: (item as any).bastJumlah || 0,
               bast_waktu: (item as any).bastWaktu || '',
+              vehicle_number: item.vehicleNumber || '',
+              comments: item.comments || '',
               status: item.status || 'BAST Sah',
               items: (item as any).items || [],
               photo_url: item.imageUrl || '',
@@ -2251,6 +2253,7 @@ export default function MockModules({
               sj_kepada: (item as any).sjKepada || item.receiverName || '',
               sj_driver: (item as any).sjDriver || item.vehicleNumber || '',
               sj_waktu: (item as any).sjWaktu || '',
+              vehicle_number: item.vehicleNumber || '',
               status: item.status || 'Terkirim',
               items: (item as any).items || [],
               sj_rows: (item as any).sjRows || [],
@@ -2634,9 +2637,48 @@ export default function MockModules({
 
   const fetchDatabaseData = async () => {
     setIsLoadingData(true);
+    setIsInitialFetchDone(false);
     setDbErrorMsg(null);
     try {
       if (isSupabaseConfigured && supabase) {
+        // Document screens only need one document type for one operational day.
+        // Avoid loading unrelated history and modules before the active form can open.
+        if ([19, 20, 21].includes(moduleIndex)) {
+          const targetDate = selectedDate || '2026-06-16';
+          const table = moduleIndex === 19 ? 'bast_docs' : moduleIndex === 20 ? 'surat_jalan_docs' : 'organoleptik_docs';
+          const { data, error } = await supabase.from(table).select('*').eq('date', targetDate);
+          if (error) {
+            setDbErrorMsg(`Gagal memuat ${table} untuk ${targetDate}: ${error.message}`);
+            return;
+          }
+
+          const documents = (data || []).map((doc: any) => {
+            if (moduleIndex === 19) return {
+              id: doc.id, type: 'serah_terima', date: doc.date, status: doc.status || 'Aktif', is_locked: !!doc.is_locked,
+              vehicleNumber: doc.vehicle_number || '', imageUrl: doc.photo_url || '', comments: doc.comments || '', uploadedBy: doc.uploaded_by || '',
+              receiverName: doc.bast_penerima || doc.bast_sekolah || '', bastNo: doc.bast_no, bastDriver: doc.bast_driver,
+              bastSekolah: doc.bast_sekolah, bastPenerima: doc.bast_penerima, bastBarang: doc.bast_barang, bastJumlah: doc.bast_jumlah,
+              bastWaktu: doc.bast_waktu, items: doc.items || [], bastSignatureDriver: doc.bast_signature_driver, bastSignatureReceiver: doc.bast_signature_receiver
+            };
+            if (moduleIndex === 20) return {
+              id: doc.id, type: 'surat_jalan', date: doc.date, status: doc.status || 'Aktif', is_locked: !!doc.is_locked,
+              vehicleNumber: doc.vehicle_number || '', imageUrl: doc.photo_url || '', comments: doc.comments || '', uploadedBy: doc.uploaded_by || '',
+              receiverName: doc.sj_kepada || '', sjNo: doc.sj_no, sjKepada: doc.sj_kepada, sjDriver: doc.sj_driver, sjWaktu: doc.sj_waktu,
+              items: doc.items || [], sjRows: typeof doc.sj_rows === 'string' ? JSON.parse(doc.sj_rows) : doc.sj_rows || [],
+              sjSignatureAslap: doc.sj_signature_aslap, sjSignatureReceiver: doc.sj_signature_receiver
+            };
+            return {
+              id: doc.id, type: 'organoleptik', date: doc.date, status: doc.status || 'Aktif', is_locked: !!doc.is_locked,
+              imageUrl: doc.photo_url || '', comments: doc.notes || doc.orlep_kritik || '', uploadedBy: doc.uploaded_by || '',
+              orlepJam: doc.orlep_jam, orlepPanelis: doc.orlep_panelis || doc.tester_name, orlepDesa: doc.orlep_desa,
+              orlepMenu: doc.orlep_menu || doc.menu_name, orlepKritik: doc.orlep_kritik, organoleptikSuhu: doc.organoleptik_suhu,
+              orlepGrid: typeof doc.orlep_grid === 'string' ? JSON.parse(doc.orlep_grid) : doc.orlep_grid, orlepSignature: doc.orlep_signature
+            };
+          });
+          setRawShippingDocs(documents);
+          return;
+        }
+
         // Fetch Sisa Stok
         const { data: sisaData, error: sisaErr } = await supabase
           .from('sisa_stok')
@@ -2687,6 +2729,13 @@ const [shipRes, bastRes, sjRes, orlepRes] = await Promise.allSettled([
             supabase.from('organoleptik_docs').select('*').order('date', { ascending: false }).limit(500)
           ]);
 
+          const documentErrors = [shipRes, bastRes, sjRes, orlepRes]
+            .filter((result): result is PromiseFulfilledResult<any> => result.status === 'fulfilled' && !!result.value.error)
+            .map(result => result.value.error.message);
+          if (documentErrors.length) {
+            setDbErrorMsg(`Gagal memuat dokumen dari Supabase: ${documentErrors.join(' | ')}`);
+          }
+
           const combinedMap = new Map<string, any>();
 
           // 1. Process shipping_docs
@@ -2719,9 +2768,9 @@ const [shipRes, bastRes, sjRes, orlepRes] = await Promise.allSettled([
                 id: d.id,
                 type: 'serah_terima',
                 date: d.date,
-                vehicleNumber: d.bast_driver || existing.vehicleNumber || '',
+                vehicleNumber: d.vehicle_number || existing.vehicleNumber || '',
                 imageUrl: d.photo_url || existing.imageUrl || '',
-                comments: existing.comments || '',
+                comments: d.comments || existing.comments || '',
                 uploadedBy: d.uploaded_by || existing.uploadedBy || '',
                 uploadedAt: d.created_at || existing.uploadedAt || new Date().toISOString(),
                 receiverName: d.bast_penerima || d.bast_sekolah || existing.receiverName || '',
@@ -2750,7 +2799,7 @@ const [shipRes, bastRes, sjRes, orlepRes] = await Promise.allSettled([
                 id: d.id,
                 type: 'surat_jalan',
                 date: d.date,
-                vehicleNumber: d.sj_driver || existing.vehicleNumber || '',
+                vehicleNumber: d.vehicle_number || existing.vehicleNumber || '',
                 imageUrl: d.photo_url || existing.imageUrl || '',
                 comments: d.comments || existing.comments || '',
                 uploadedBy: d.uploaded_by || existing.uploadedBy || '',
@@ -3402,6 +3451,23 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
   };
 
   const currentYear = 2026;
+
+  // Document pages wait for the online source of truth; never render a transient empty board.
+  if ([19, 20, 21].includes(moduleIndex) && (isLoadingData || !isInitialFetchDone)) {
+    return (
+      <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-2xl border border-neutral-200 bg-white p-8 text-center">
+        <Loader2 className="h-7 w-7 animate-spin text-emerald-700" />
+        <div>
+          <h2 className="text-sm font-extrabold text-neutral-800">Menyinkronkan data Supabase</h2>
+          <p className="mt-1 text-xs text-neutral-500">Memuat dokumen, Master Porsi, dan menu harian. Mohon tunggu.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if ([19, 20, 21].includes(moduleIndex) && dbErrorMsg) {
+    return <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-900"><strong>Koneksi Supabase belum berhasil.</strong><br />{dbErrorMsg}</div>;
+  }
 
   // Render correct mockup based on index (1-based to match the user's 1-14 numbering)
   switch (moduleIndex) {
@@ -5282,6 +5348,8 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
           selectedDate={selectedDate || '2026-06-16'}
           allDayMenus={allDayMenus}
           onSelectDate={onSelectDate}
+          isLoading={isLoadingData || !isInitialFetchDone}
+          databaseError={dbErrorMsg}
         />
       );
     }
@@ -5320,7 +5388,7 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
           selectedDate={selectedDate || '2026-08-04'}
           allDayMenus={allDayMenus}
           shippingDocs={shippingDocs}
-          setShippingDocs={setRawShippingDocs}
+          setShippingDocs={setShippingDocs}
         />
       );
     }

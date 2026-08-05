@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { DayMenu, UserRole } from '../types';
 import { UserProfile } from '../lib/supabase';
-import MonthlyDocumentCards from './MonthlyDocumentCards';
+import DocumentDatePicker from './DocumentDatePicker';
 import { getRecipientName, getDefaultReceiptTime } from '../presetData';
 import SignaturePad from './SignaturePad';
 import OfficialStamp from './OfficialStamp';
@@ -65,6 +65,7 @@ export default function OrganoleptikView({
   const restrictedLocation = loggedInUser?.email ? getPenerimaLocation(loggedInUser.email) : "";
   const isAdminOrAslap = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.ASLAP;
   const isAkunUtama = currentUserRole === UserRole.ADMIN || (loggedInUser?.email && ['punkysme@gmail.com', 'ketua@sppg.com'].includes(loggedInUser.email.toLowerCase().trim()));
+  const isPrimaryAdmin = isAkunUtama;
 
   // Keep activeDoc in sync with updated shippingDocs from parent state
   useEffect(() => {
@@ -325,7 +326,7 @@ export default function OrganoleptikView({
     const isLocked = activeDoc.is_locked === true || activeDoc.isLocked === true || activeDoc.status === 'Selesai' || activeDoc.status === 'Terkunci';
     return (
       <div className="space-y-6 animate-fade-in" id="orlep-printed-view">
-        {!isAdminOrAslap && <MonthlyDocumentCards table="organoleptik_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDoc(null); setActiveDateView(date); onSelectDate?.(date); }} />}
+        {!isPrimaryAdmin && <DocumentDatePicker selectedDate={viewDate} onSelectDate={(date) => { setActiveDoc(null); setActiveDateView(date); onSelectDate?.(date); }} />}
         {/* Sticky Action Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-neutral-50 p-4 rounded-2xl border border-neutral-200 shadow-3xs print:hidden">
           {!restrictedLocation && (
@@ -394,10 +395,9 @@ export default function OrganoleptikView({
           {/* Document Header */}
           <div className="flex items-center justify-between gap-4 border-b-4 border-double border-neutral-900 pb-4">
             <img 
-              src="https://www.bgn.go.id/logo-bgn.png" 
-              alt="Logo BGN" 
+              src="/logo%20yayasan.png"
+              alt="Logo Yayasan Qomaruddin"
               className="h-16 w-16 md:h-20 md:w-20 object-contain select-none shrink-0" 
-              referrerPolicy="no-referrer"
             />
             <div className="text-center flex-1 space-y-1">
               <h3 className="font-extrabold text-neutral-950 text-xs md:text-sm tracking-wide uppercase">
@@ -411,14 +411,9 @@ export default function OrganoleptikView({
               </p>
             </div>
             <img 
-              src="https://qomaruddin.com/wp-content/uploads/2019/02/cropped-logo-qomaruddin-1-192x192.png" 
-              alt="Logo PP Qomaruddin" 
+              src="/logo%20sppg.png"
+              alt="Logo SPPG"
               className="h-16 w-16 md:h-20 md:w-20 object-contain select-none shrink-0 border border-neutral-100 p-0.5 rounded-full" 
-              referrerPolicy="no-referrer"
-              onError={(e) => {
-                // In case of any loading failure, fall back to a high quality alternative
-                e.currentTarget.src = "https://www.bgn.go.id/logo-bgn.png";
-              }}
             />
           </div>
 
@@ -849,7 +844,7 @@ export default function OrganoleptikView({
   // Dashboard / List View
   const filteredDocsByDate = filteredDocs.filter(d => d.date === viewDate);
   // Grid of Date Cards View
-  if (!activeDateView) {
+  if (!activeDateView && isPrimaryAdmin) {
     const dates = [...(allDayMenus || [])].filter(menu => menu.date.startsWith(selectedDate.slice(0, 7))).sort((a,b) => a.date.localeCompare(b.date));
     
     return (
@@ -909,7 +904,7 @@ export default function OrganoleptikView({
 
   return (
     <div className="space-y-6 animate-fade-in" id="orlep-dashboard">
-      <MonthlyDocumentCards table="organoleptik_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDateView(date); onSelectDate?.(date); }} />
+      {!isPrimaryAdmin && <DocumentDatePicker selectedDate={viewDate} onSelectDate={(date) => { setActiveDateView(date); onSelectDate?.(date); }} />}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">

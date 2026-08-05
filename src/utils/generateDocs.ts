@@ -1,6 +1,7 @@
 import { PortionConfig, DEFAULT_PORTIONS } from '../components/PortionMasterView';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { getRecipientName, getDefaultReceiptTime, generateAbbrev } from './docHelpers';
+import { DELIVERY_TARGETS, buildBastComment, buildSuratJalanRows, getDeliveryDetails } from './deliveryMaster';
 
 export async function fetchPortionsForDate(date: string): Promise<PortionConfig> {
   let portions: PortionConfig = { ...DEFAULT_PORTIONS };
@@ -54,14 +55,7 @@ export async function generateInitialDocsAsync(
   const month = dateParts[1] || '07';
   const day = dateParts[2] || '19';
 
-  const schools = [
-    "MA Assa'adah",
-    "MTS Assa'adah II",
-    "SMA Assa'adah",
-    "SMK Assa'adah",
-    "Desa Sukowati",
-    "Desa Sidokumpul"
-  ];
+  const schools = DELIVERY_TARGETS;
 
   const getPortionCount = (schName: string) => {
     if (schName === "MA Assa'adah") return (portions.MA?.guru || 0) + (portions.MA?.siswa || 0);
@@ -84,24 +78,25 @@ export async function generateInitialDocsAsync(
       schools.forEach((sch, idx) => {
         const abbrev = generateAbbrev(sch);
         const bastNoStr = `${day}/${abbrev}/BAST/MBGQOM/${month}/${year}`;
+        const details = getDeliveryDetails(sch, portions);
         newDocsCreated.push({
           id: `bast-${selectedDate}-${idx}-${nowTs}`,
           type: 'serah_terima',
           date: selectedDate,
-          vehicleNumber: 'W 8006 EG',
+          vehicleNumber: details.vehicleNumber,
           imageUrl: 'https://images.unsplash.com/photo-1450133064473-71024230f91b?w=500&auto=format&fit=crop&q=80',
-          comments: `Dokumen serah terima makanan bergizi untuk ${sch}.`,
+          comments: buildBastComment(sch, portions, menuStr.split(',').map(item => item.trim())),
           uploadedBy: uploader,
           uploadedAt: new Date().toISOString(),
-          receiverName: getRecipientName(sch),
+          receiverName: details.recipient,
           status: 'Aktif',
           bastNo: bastNoStr,
-          bastDriver: 'Ahmad Maghfur',
+          bastDriver: details.driver,
           bastSekolah: sch,
-          bastPenerima: getRecipientName(sch),
+          bastPenerima: details.recipient,
           bastBarang: 'PAKET PROGRAM MAKAN BERGIZI GRATIS',
-          bastJumlah: getPortionCount(sch),
-          bastWaktu: getDefaultReceiptTime(sch),
+          bastJumlah: details.total,
+          bastWaktu: details.time,
           bastSignatureDriver: '',
           bastSignatureReceiver: ''
         });
@@ -116,46 +111,23 @@ export async function generateInitialDocsAsync(
       schools.forEach((sch, idx) => {
         const abbrev = generateAbbrev(sch);
         const sjNoStr = `${day}/${abbrev}/SJ/MBGQOM/${month}/${year}`;
-        const tot = getPortionCount(sch);
-        let sjRows = [];
-        if (sch.includes('Desa')) {
-          let b = 0, k = 0;
-          if (sch.includes('Sukowati')) { b = portions.Sukowati?.besar || 0; k = portions.Sukowati?.kecil || 0; }
-          if (sch.includes('Sidokumpul')) { b = portions.Sidokumpul?.besar || 0; k = portions.Sidokumpul?.kecil || 0; }
-          sjRows = [
-            { id: '1', jenis: 'Porsi Kecil', porsi: k, alatSebelum: k, alatSesudah: k, keterangan: 'Hangat & Lengkap' },
-            { id: '2', jenis: 'Porsi Besar', porsi: b, alatSebelum: b, alatSesudah: b, keterangan: 'Hangat & Lengkap' },
-            { id: '3', jenis: 'Susu Kotak UHT 125ml', porsi: tot, alatSebelum: 0, alatSesudah: 0, keterangan: 'Karton Utuh' }
-          ];
-        } else {
-          let g = 0, s = 0;
-          if (sch.includes('MA')) { g = portions.MA?.guru || 0; s = portions.MA?.siswa || 0; }
-          if (sch.includes('MTS')) { g = portions["MTS II"]?.guru || 0; s = portions["MTS II"]?.siswa || 0; }
-          if (sch.includes('SMA')) { g = portions.SMA?.guru || 0; s = portions.SMA?.siswa || 0; }
-          if (sch.includes('SMK')) { g = portions.SMK?.guru || 0; s = portions.SMK?.siswa || 0; }
-          sjRows = [
-            { id: '1', jenis: 'Porsi Guru / Pendamping', porsi: g, alatSebelum: g, alatSesudah: g, keterangan: 'Hangat & Lengkap' },
-            { id: '2', jenis: 'Porsi Siswa / Penerima', porsi: s, alatSebelum: s, alatSesudah: s, keterangan: 'Hangat & Lengkap' },
-            { id: '3', jenis: 'Susu Kotak UHT 125ml', porsi: tot, alatSebelum: 0, alatSesudah: 0, keterangan: 'Karton Utuh' }
-          ];
-        }
-        
-        sjRows = sjRows.filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT'));
+        const details = getDeliveryDetails(sch, portions);
+        const sjRows = buildSuratJalanRows(sch, portions);
         newDocsCreated.push({
           id: `sj-${selectedDate}-${idx}-${nowTs}`,
           type: 'surat_jalan',
           date: selectedDate,
-          vehicleNumber: 'W 8006 EG',
+          vehicleNumber: details.vehicleNumber,
           imageUrl: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=500&auto=format&fit=crop&q=80',
           comments: `Dokumen surat jalan pengiriman logistik untuk ${sch}.`,
           uploadedBy: uploader,
           uploadedAt: new Date().toISOString(),
-          receiverName: getRecipientName(sch),
+          receiverName: details.recipient,
           status: 'Aktif',
           sjNo: sjNoStr,
           sjKepada: sch,
-          sjWaktu: getDefaultReceiptTime(sch),
-          sjDriver: 'Ahmad Maghfur',
+          sjWaktu: details.time,
+          sjDriver: details.driver,
           sjRows,
           sjSignatureAslap: '',
           sjSignatureReceiver: ''
@@ -169,18 +141,19 @@ export async function generateInitialDocsAsync(
     const hasOrlep = currentDocs.some(d => d.type === 'organoleptik' && d.date === selectedDate);
     if (!hasOrlep) {
       schools.forEach((sch, idx) => {
+        const details = getDeliveryDetails(sch, portions);
         newDocsCreated.push({
           id: `orlep-${selectedDate}-${idx}-${nowTs}`,
           type: 'organoleptik',
           date: selectedDate,
-          vehicleNumber: 'W 1234 BGH',
+          vehicleNumber: details.vehicleNumber,
           imageUrl: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=80',
           comments: `Hasil uji kelayakan sensorik rasa dan suhu CCP hidangan gizi untuk ${sch}.`,
           uploadedBy: uploader,
           uploadedAt: new Date().toISOString(),
-          receiverName: getRecipientName(sch),
+          receiverName: details.recipient,
           status: 'Aktif',
-          orlepJam: getDefaultReceiptTime(sch),
+          orlepJam: details.time,
           orlepPanelis: 'Avianti Rahma Dianita',
           orlepDesa: sch,
           orlepMenu: menuStr,
@@ -202,7 +175,7 @@ export async function generateInitialDocsAsync(
   return [...currentDocs, ...newDocsCreated];
 }
 
-export function updateExistingDocsWithPortions(currentDocs: any[], date: string, portions: PortionConfig): any[] {
+export function updateExistingDocsWithPortions(currentDocs: any[], date: string, portions: PortionConfig, menuList: string[] = []): any[] {
   const getPortionCount = (schName: string) => {
     if (!schName) return 0;
     if (schName.includes("MA")) return (portions.MA?.guru || 0) + (portions.MA?.siswa || 0);
@@ -220,40 +193,39 @@ export function updateExistingDocsWithPortions(currentDocs: any[], date: string,
     const sch = doc.bastSekolah || doc.sjKepada || doc.receiverName || '';
 
     if (doc.type === 'serah_terima') {
-      const newCount = getPortionCount(sch);
+      const details = getDeliveryDetails(sch, portions);
       return {
         ...doc,
-        bastJumlah: newCount > 0 ? newCount : doc.bastJumlah
+        vehicleNumber: details.vehicleNumber || doc.vehicleNumber,
+        receiverName: details.recipient || doc.receiverName,
+        bastDriver: details.driver || doc.bastDriver,
+        bastPenerima: details.recipient || doc.bastPenerima,
+        bastJumlah: details.total,
+        bastWaktu: details.time || doc.bastWaktu,
+        comments: buildBastComment(sch, portions, menuList)
       };
     }
 
     if (doc.type === 'surat_jalan') {
-      const tot = getPortionCount(sch);
-      let sjRows = doc.sjRows || [];
-      if (sch.includes('Desa') || sch.includes('Sukowati') || sch.includes('Sidokumpul')) {
-        let b = 0, k = 0;
-        if (sch.includes('Sukowati')) { b = portions.Sukowati?.besar || 0; k = portions.Sukowati?.kecil || 0; }
-        if (sch.includes('Sidokumpul')) { b = portions.Sidokumpul?.besar || 0; k = portions.Sidokumpul?.kecil || 0; }
-        sjRows = [
-          { id: '1', jenis: 'Porsi Kecil', porsi: k, alatSebelum: k, alatSesudah: k, keterangan: 'Hangat & Lengkap' },
-          { id: '2', jenis: 'Porsi Besar', porsi: b, alatSebelum: b, alatSesudah: b, keterangan: 'Hangat & Lengkap' },
-          { id: '3', jenis: 'Susu Kotak UHT 125ml', porsi: tot, alatSebelum: 0, alatSesudah: 0, keterangan: 'Karton Utuh' }
-        ];
-      } else {
-        let g = 0, s = 0;
-        if (sch.includes('MA')) { g = portions.MA?.guru || 0; s = portions.MA?.siswa || 0; }
-        if (sch.includes('MTS')) { g = portions["MTS II"]?.guru || 0; s = portions["MTS II"]?.siswa || 0; }
-        if (sch.includes('SMA')) { g = portions.SMA?.guru || 0; s = portions.SMA?.siswa || 0; }
-        if (sch.includes('SMK')) { g = portions.SMK?.guru || 0; s = portions.SMK?.siswa || 0; }
-        sjRows = [
-          { id: '1', jenis: 'Porsi Guru / Pendamping', porsi: g, alatSebelum: g, alatSesudah: g, keterangan: 'Hangat & Lengkap' },
-          { id: '2', jenis: 'Porsi Siswa / Penerima', porsi: s, alatSebelum: s, alatSesudah: s, keterangan: 'Hangat & Lengkap' },
-          { id: '3', jenis: 'Susu Kotak UHT 125ml', porsi: tot, alatSebelum: 0, alatSesudah: 0, keterangan: 'Karton Utuh' }
-        ];
-      }
+      const details = getDeliveryDetails(sch, portions);
       return {
         ...doc,
-        sjRows: sjRows.filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT'))
+        vehicleNumber: details.vehicleNumber || doc.vehicleNumber,
+        receiverName: details.recipient || doc.receiverName,
+        sjDriver: details.driver || doc.sjDriver,
+        sjWaktu: details.time || doc.sjWaktu,
+        sjRows: buildSuratJalanRows(sch, portions)
+      };
+    }
+
+    if (doc.type === 'organoleptik') {
+      const details = getDeliveryDetails(sch, portions);
+      return {
+        ...doc,
+        vehicleNumber: details.vehicleNumber || doc.vehicleNumber,
+        receiverName: details.recipient || doc.receiverName,
+        orlepJam: details.time || doc.orlepJam,
+        orlepMenu: menuList.length ? menuList.join(', ') : doc.orlepMenu
       };
     }
 

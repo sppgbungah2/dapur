@@ -14,7 +14,7 @@ import { isSupabaseConfigured, supabase, mapUserToProfile, UserProfile } from '.
 import { safeLocalStorageSetItem, safeLocalStorageGetItem } from './lib/storage';
 import { useRouting } from './hooks/useRouting';
 import { useSopData } from './hooks/useSopData';
-import MonthlyDocumentCards from './components/MonthlyDocumentCards';
+import DocumentDatePicker from './components/DocumentDatePicker';
 
 export default function App() {
   // Clear deprecated local cache
@@ -703,8 +703,8 @@ export default function App() {
 
         // 5. DRIVER
         if (email === 'driver@qomaruddin.com') {
-          // SOP Harian, Menu Harian Gizi, Order Alat/Operasional, BAST, Surat Jalan, Keluhan, Dokumentasi Pengiriman Ompreng
-          return FEATURE_MENUS.filter(menu => [15, 10, 4, 5, 18, 19, 20, 14].includes(menu.num));
+          // Driver hanya mengakses BAST, bukan Surat Jalan.
+          return FEATURE_MENUS.filter(menu => [15, 10, 4, 5, 18, 19, 14].includes(menu.num));
         }
 
         // Legacy/Default Fallbacks based on mapped roles
@@ -713,7 +713,7 @@ export default function App() {
         } else if (role === UserRole.AKUNTAN) {
           return FEATURE_MENUS.filter(menu => [15, 10, 12, 17, 4, 5, 6, 7, 14].includes(menu.num));
         } else if (role === UserRole.DRIVER) {
-          return FEATURE_MENUS.filter(menu => [15, 14, 18, 19, 20, 21].includes(menu.num));
+          return FEATURE_MENUS.filter(menu => [15, 14, 18, 19, 21].includes(menu.num));
         } else if (loggedInUser.isCoordinator) {
           return FEATURE_MENUS.filter(menu => [15, 14, 4, 5, 16, 17].includes(menu.num));
         }
@@ -759,6 +759,7 @@ export default function App() {
   }
 
   // Calculate SOP Aggregated Metrics
+  const isPrimaryAdmin = currentUserRole === UserRole.ADMIN || ['punkysme@gmail.com', 'ketua@sppg.com'].includes(loggedInUser?.email?.toLowerCase().trim() || '');
   const totalSOPs = sops.length;
   const completedSOPs = sops.filter(s => s.status === 'selesai').length;
   const activeSOPs = sops.filter(s => s.status === 'aktif').length;
@@ -971,7 +972,12 @@ export default function App() {
               onGoToTab={setActiveTab}
               onSaveSopsToCloud={handleSaveSopsToCloud}
             />
-          ) : activeSopDetail ? (
+          ) : (
+            <>
+            {!isPrimaryAdmin && (
+              <DocumentDatePicker selectedDate={selectedDate} onSelectDate={(date) => { setSelectedDate(date); setActiveSopDetail(null); }} />
+            )}
+            {activeSopDetail ? (
             /* Render Full-depth checklist printed form sheet */
             <SOPChecklistView
               sop={activeSopDetail}
@@ -984,10 +990,9 @@ export default function App() {
               loggedInUser={loggedInUser}
               onSaveSopsToCloud={handleSaveSopsToCloud}
             />
-          ) : loggedInUser.isCoordinator ? (
+            ) : loggedInUser.isCoordinator ? (
             /* Coordinator Empty State: No SOP generated for this date yet */
             <div className="bg-white p-12 rounded-3xl border border-neutral-100 shadow-xl text-center space-y-6 max-w-2xl mx-auto my-12">
-              <MonthlyDocumentCards table="sops" selectedDate={selectedDate} onSelectDate={(date) => { setSelectedDate(date); setActiveSopDetail(null); }} />
               <div className="w-16 h-16 bg-amber-50 border border-amber-200 rounded-full flex items-center justify-center mx-auto text-amber-600">
                 <ShieldAlert className="w-8 h-8 animate-pulse" />
               </div>
@@ -1004,7 +1009,6 @@ export default function App() {
           ) : (
             /* SOP Management Page */
             <div className="space-y-6">
-              <MonthlyDocumentCards table="sops" selectedDate={selectedDate} onSelectDate={(date) => { setSelectedDate(date); setActiveSopDetail(null); }} />
               {/* Context Banner */}
               <div className="bg-white p-5 rounded-2xl border border-neutral-100 shadow-3xs flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
@@ -1277,6 +1281,8 @@ export default function App() {
                 </div>
               )}
             </div>
+            )}
+            </>
           )}
         </div>
       </main>

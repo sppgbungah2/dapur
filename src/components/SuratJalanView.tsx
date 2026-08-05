@@ -10,7 +10,9 @@ import { DEFAULT_PORTIONS, PortionConfig } from './PortionMasterView';
 import { getRecipientName, getDefaultReceiptTime } from '../presetData';
 import SignaturePad from './SignaturePad';
 import OfficialStamp from './OfficialStamp';
-import MonthlyDocumentCards from './MonthlyDocumentCards';
+import DocumentDatePicker from './DocumentDatePicker';
+import { DELIVERY_TARGETS, buildSuratJalanRows, getDeliveryDetails } from '../utils/deliveryMaster';
+import { fetchPortionsForDate } from '../utils/generateDocs';
 
 interface SuratJalanViewProps {
   shippingDocs: any[];
@@ -66,6 +68,7 @@ export default function SuratJalanView({
   const restrictedLocation = loggedInUser?.email ? getPenerimaLocation(loggedInUser.email) : "";
   const isAdminOrAslap = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.ASLAP || (loggedInUser?.email && ['maghfur@qomaruddin.com', 'rifkah@qomaruddin.com', 'fajar@qomaruddin.com', 'sam@qomaruddin.com', 'maghfurmunif@gmail.com', 'punkysme@gmail.com', 'ketua@sppg.com'].includes(loggedInUser.email.toLowerCase().trim()));
   const isAkunUtama = currentUserRole === UserRole.ADMIN || (loggedInUser?.email && ['punkysme@gmail.com', 'ketua@sppg.com'].includes(loggedInUser.email.toLowerCase().trim()));
+  const isPrimaryAdmin = isAkunUtama;
 
   // Daily list of docs for selected date (for releasing check)
   const dateDocs = shippingDocs.filter(d => d.type === 'surat_jalan' && d.date === viewDate);
@@ -120,6 +123,32 @@ export default function SuratJalanView({
     }
   }, [shippingDocs]);
 
+  // Refresh the opened delivery sheet from the online Master Porsi for the same operational date.
+  useEffect(() => {
+    if (!activeDoc || activeDoc.type !== 'surat_jalan') return;
+    let alive = true;
+    const synchronizeFromMaster = async () => {
+      const portions = await fetchPortionsForDate(activeDoc.date);
+      if (!alive) return;
+      const details = getDeliveryDetails(activeDoc.sjKepada, portions);
+      const updated = {
+        ...activeDoc,
+        vehicleNumber: details.vehicleNumber || activeDoc.vehicleNumber,
+        receiverName: details.recipient || activeDoc.receiverName,
+        sjDriver: details.driver || activeDoc.sjDriver,
+        sjWaktu: details.time || activeDoc.sjWaktu,
+        sjRows: buildSuratJalanRows(activeDoc.sjKepada, portions)
+      };
+      if (JSON.stringify(updated) !== JSON.stringify(activeDoc)) {
+        setActiveDoc(updated);
+        setShippingDocs(prev => prev.map(doc => doc.id === activeDoc.id ? updated : doc));
+        void persistSuratJalan(updated);
+      }
+    };
+    void synchronizeFromMaster();
+    return () => { alive = false; };
+  }, [activeDoc?.id, activeDoc?.date, activeDoc?.sjKepada]);
+
   // Auto select for Penerima if exists
   useEffect(() => {
     if (restrictedLocation) {
@@ -150,7 +179,7 @@ export default function SuratJalanView({
       if (!alive || error || !data?.length) return;
       const hydrated = data.map((d: any) => ({
         id: d.id, type: 'surat_jalan', date: d.date, status: d.status, is_locked: !!d.is_locked,
-        sjNo: d.sj_no, sjKepada: d.sj_kepada, sjDriver: d.sj_driver, sjWaktu: d.sj_waktu,
+        sjNo: d.sj_no, sjKepada: d.sj_kepada, sjDriver: d.sj_driver, sjWaktu: d.sj_waktu, vehicleNumber: d.vehicle_number || '',
         sjRows: (typeof d.sj_rows === 'string' ? JSON.parse(d.sj_rows) : d.sj_rows || []).filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT')),
         items: d.items || [], imageUrl: d.photo_url || '', comments: d.comments || '', uploadedBy: d.uploaded_by || '',
         sjSignatureAslap: d.sj_signature_aslap, sjSignatureReceiver: d.sj_signature_receiver, receiverName: d.sj_kepada || ''
@@ -237,14 +266,7 @@ export default function SuratJalanView({
       console.warn("Error loading portion master data for Surat Jalan initialization:", err);
     }
 
-    const schools = [
-      "MA Assa'adah",
-      "MTS Assa'adah II",
-      "SMA Assa'adah",
-      "SMK Assa'adah",
-      "Desa Sidokumpul",
-      "Desa Sukowati"
-    ];
+    const schools = DELIVERY_TARGETS;
 
     const getPortionCount = (schName: string) => {
       if (schName === "MA Assa'adah") {
@@ -301,6 +323,7 @@ export default function SuratJalanView({
       const isDesa = sch.toLowerCase().includes('desa');
       const docQty = getPortionCount(sch);
       const breakdownStr = getPortionBreakdown(sch);
+      const details = getDeliveryDetails(sch, portions);
       
       let sjRows = [];
       if (sch === "MA Assa'adah") {
@@ -369,18 +392,18 @@ export default function SuratJalanView({
         id: `sj-${selectedDate}-${idx}-${Date.now()}`,
         type: 'surat_jalan',
         date: selectedDate,
-        vehicleNumber: 'W 8006 EG',
+        vehicleNumber: details.vehicleNumber,
         imageUrl: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=500&auto=format&fit=crop&q=80',
         comments: `Dokumen surat jalan pengiriman logistik untuk ${sch} ${breakdownStr}.`,
         uploadedBy: loggedInUser?.email || 'driver@sppg.com',
         uploadedAt: new Date().toISOString(),
-        receiverName: getRecipientName(sch),
+        receiverName: details.recipient,
         status: 'Aktif',
         sjNo: sjNoStr,
         sjKepada: sch,
-        sjWaktu: getDefaultReceiptTime(sch),
-        sjDriver: loggedInUser?.role === UserRole.DRIVER ? loggedInUser.fullName : DRIVERS_LIST[0],
-        sjRows,
+        sjWaktu: details.time,
+        sjDriver: details.driver,
+        sjRows: buildSuratJalanRows(sch, portions),
         sjSignatureAslap: '',
         sjSignatureReceiver: ''
       };
@@ -396,7 +419,7 @@ export default function SuratJalanView({
     if (!isSupabaseConfigured || !supabase) return;
     const { error } = await supabase.from('surat_jalan_docs').upsert({
       id: doc.id, date: doc.date, sj_no: doc.sjNo, sj_kepada: doc.sjKepada, sj_driver: doc.sjDriver,
-      sj_waktu: doc.sjWaktu, items: doc.items || [], sj_rows: (doc.sjRows || []).filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT')),
+      sj_waktu: doc.sjWaktu, vehicle_number: doc.vehicleNumber || '', items: doc.items || [], sj_rows: (doc.sjRows || []).filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT')),
       photo_url: doc.imageUrl || '', comments: doc.comments || '', sj_signature_aslap: doc.sjSignatureAslap || null,
       sj_signature_receiver: doc.sjSignatureReceiver || null, status: doc.status || 'published', is_locked: !!doc.is_locked,
       uploaded_by: doc.uploadedBy || ''
@@ -617,7 +640,7 @@ export default function SuratJalanView({
     const isFieldReadOnly = isLocked || currentUserRole === UserRole.PENERIMA;
     return (
       <div className="space-y-6 animate-fade-in" id="sj-printed-view">
-        {!isAdminOrAslap && <MonthlyDocumentCards table="surat_jalan_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDoc(null); setActiveDateView(date); onSelectDate?.(date); }} />}
+        {!isPrimaryAdmin && <DocumentDatePicker selectedDate={viewDate} onSelectDate={(date) => { setActiveDoc(null); setActiveDateView(date); onSelectDate?.(date); }} />}
         {/* Sticky Action Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-neutral-50 p-4 rounded-2xl border border-neutral-200 shadow-3xs print:hidden">
           {!restrictedLocation && (
@@ -1088,7 +1111,7 @@ export default function SuratJalanView({
   }
 
   // Grid of Date Cards View
-  if (!activeDateView) {
+  if (!activeDateView && isPrimaryAdmin) {
     // Collect all dates from menus
     const dates = [...allDayMenus].filter(menu => menu.date.startsWith(selectedDate.slice(0, 7))).sort((a,b) => a.date.localeCompare(b.date));
     
@@ -1162,7 +1185,7 @@ export default function SuratJalanView({
 
   return (
     <div className="space-y-6 animate-fade-in" id="sj-dashboard">
-      <MonthlyDocumentCards table="surat_jalan_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDateView(date); onSelectDate?.(date); }} />
+      {!isPrimaryAdmin && <DocumentDatePicker selectedDate={viewDate} onSelectDate={(date) => { setActiveDateView(date); onSelectDate?.(date); }} />}
       
       {/* 1. Header & Title Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

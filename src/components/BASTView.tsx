@@ -10,7 +10,9 @@ import { DEFAULT_PORTIONS, PortionConfig } from './PortionMasterView';
 import { getRecipientName, getDefaultReceiptTime } from '../presetData';
 import SignaturePad from './SignaturePad';
 import OfficialStamp from './OfficialStamp';
-import MonthlyDocumentCards from './MonthlyDocumentCards';
+import DocumentDatePicker from './DocumentDatePicker';
+import { DELIVERY_TARGETS, buildBastComment, getDeliveryDetails } from '../utils/deliveryMaster';
+import { fetchPortionsForDate } from '../utils/generateDocs';
 
 interface BASTViewProps {
   shippingDocs: any[];
@@ -20,6 +22,8 @@ interface BASTViewProps {
   currentUserRole: UserRole;
   allDayMenus?: DayMenu[];
   onSelectDate?: (date: string) => void;
+  isLoading?: boolean;
+  databaseError?: string | null;
 }
 
 export default function BASTView({
@@ -29,11 +33,14 @@ export default function BASTView({
   loggedInUser,
   currentUserRole,
   allDayMenus = [],
-  onSelectDate
+  onSelectDate,
+  isLoading = false,
+  databaseError = null
 }: BASTViewProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeDoc, setActiveDoc] = useState<any | null>(null);
   const [activeDateView, setActiveDateView] = useState<string | null>(null);
+  const [selectedPM, setSelectedPM] = useState<string>('');
   const viewDate = activeDateView || selectedDate;
   const localSelectedDate = viewDate;
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -66,6 +73,8 @@ export default function BASTView({
   const restrictedLocation = loggedInUser?.email ? getPenerimaLocation(loggedInUser.email) : "";
   const isAdminOrAslap = currentUserRole === UserRole.ADMIN || currentUserRole === UserRole.ASLAP || (loggedInUser?.email && ['maghfur@qomaruddin.com', 'rifkah@qomaruddin.com', 'fajar@qomaruddin.com', 'sam@qomaruddin.com', 'maghfurmunif@gmail.com', 'punkysme@gmail.com', 'ketua@sppg.com'].includes(loggedInUser.email.toLowerCase().trim()));
   const isAkunUtama = currentUserRole === UserRole.ADMIN || (loggedInUser?.email && ['punkysme@gmail.com', 'ketua@sppg.com'].includes(loggedInUser.email.toLowerCase().trim()));
+  const isPrimaryAdmin = isAkunUtama;
+  const isDriver = currentUserRole === UserRole.DRIVER;
 
   // Daily list of docs for selected date (for releasing check)
   const dateDocs = shippingDocs.filter(d => d.type === 'serah_terima' && d.date === viewDate);
@@ -76,13 +85,14 @@ export default function BASTView({
   // Filtered list based on role and choices
   const filteredDocs = shippingDocs.filter(d => d.type === "serah_terima").filter(doc => {
     const status = String(doc.status).toLowerCase();
-    const mayOpenDraft = currentUserRole === UserRole.DRIVER;
-    if (!isAdminOrAslap && !['published', 'selesai', 'completed'].includes(status) && !(mayOpenDraft && status === 'draft')) return false;
+    const mayOpenOperationalDoc = currentUserRole === UserRole.DRIVER || currentUserRole === UserRole.PENERIMA;
+    if (!isAdminOrAslap && !['published', 'selesai', 'completed'].includes(status) && !(mayOpenOperationalDoc && ['draft', 'aktif', 'active'].includes(status))) return false;
     // 1. Role boundaries
     if (restrictedLocation && doc.bastSekolah !== restrictedLocation) return false;
     
     // For non-admin (driver/penerima), we ONLY show current date
-    if (!isAdminOrAslap && doc.date !== selectedDate) return false;
+    if (!isAdminOrAslap && doc.date !== viewDate) return false;
+    if (isDriver && (!selectedPM || doc.bastSekolah !== selectedPM)) return false;
 
     // 2. Admin filters
     if (isAdminOrAslap) {
@@ -121,6 +131,39 @@ export default function BASTView({
     }
   }, [shippingDocs]);
 
+  // The selected BAST always follows the Master Porsi and master menu for its date.
+  useEffect(() => {
+    if (!activeDoc || activeDoc.type !== 'serah_terima') return;
+    let alive = true;
+    const synchronizeFromMaster = async () => {
+      const portions = await fetchPortionsForDate(activeDoc.date);
+      let menuList = allDayMenus.find(menu => menu.date === activeDoc.date)?.menuList || [];
+      if (isSupabaseConfigured && supabase) {
+        const { data } = await supabase.from('day_menus').select('menu_list').eq('date', activeDoc.date).maybeSingle();
+        if (data?.menu_list) menuList = data.menu_list;
+      }
+      if (!alive) return;
+      const details = getDeliveryDetails(activeDoc.bastSekolah, portions);
+      const updated = {
+        ...activeDoc,
+        vehicleNumber: details.vehicleNumber || activeDoc.vehicleNumber,
+        receiverName: details.recipient || activeDoc.receiverName,
+        bastDriver: details.driver || activeDoc.bastDriver,
+        bastPenerima: details.recipient || activeDoc.bastPenerima,
+        bastJumlah: details.total,
+        bastWaktu: details.time || activeDoc.bastWaktu,
+        comments: buildBastComment(activeDoc.bastSekolah, portions, menuList)
+      };
+      if (JSON.stringify(updated) !== JSON.stringify(activeDoc)) {
+        setActiveDoc(updated);
+        setShippingDocs(prev => prev.map(doc => doc.id === activeDoc.id ? updated : doc));
+        void persistBast(updated);
+      }
+    };
+    void synchronizeFromMaster();
+    return () => { alive = false; };
+  }, [activeDoc?.id, activeDoc?.date, activeDoc?.bastSekolah, allDayMenus]);
+
   // Auto select for Penerima if exists
   useEffect(() => {
     if (restrictedLocation) {
@@ -136,25 +179,27 @@ export default function BASTView({
 
   // Field users land directly on their actionable document for the chosen day.
   useEffect(() => {
-    if (isAdminOrAslap || activeDoc) return;
-    const accessible = shippingDocs.filter(d => d.type === 'serah_terima' && d.date === viewDate && (['published', 'selesai', 'completed'].includes(String(d.status).toLowerCase()) || (currentUserRole === UserRole.DRIVER && String(d.status).toLowerCase() === 'draft')));
-    const target = restrictedLocation ? accessible.find(d => d.bastSekolah === restrictedLocation) : accessible[0];
+    if (isAdminOrAslap || activeDoc || (isDriver && !selectedPM)) return;
+    const accessible = shippingDocs.filter(d => d.type === 'serah_terima' && d.date === viewDate && (['published', 'selesai', 'completed'].includes(String(d.status).toLowerCase()) || ([UserRole.DRIVER, UserRole.PENERIMA].includes(currentUserRole) && ['draft', 'aktif', 'active'].includes(String(d.status).toLowerCase()))));
+    const target = restrictedLocation ? accessible.find(d => d.bastSekolah === restrictedLocation) : (isDriver ? accessible.find(d => d.bastSekolah === selectedPM) : accessible[0]);
     if (target) setActiveDoc(target);
-  }, [shippingDocs, viewDate, restrictedLocation, isAdminOrAslap, activeDoc, currentUserRole]);
+  }, [shippingDocs, viewDate, restrictedLocation, isAdminOrAslap, activeDoc, currentUserRole, isDriver, selectedPM]);
 
-  // A driver may arrive from a monthly card before the shared cache finishes loading.
+  // Field users may open a date before the shared cache finishes loading.
   // Fetch the authoritative BAST row and hydrate the same document shape used by every role.
   useEffect(() => {
-    if (currentUserRole !== UserRole.DRIVER || !isSupabaseConfigured || !supabase) return;
+    if (![UserRole.DRIVER, UserRole.PENERIMA].includes(currentUserRole) || !isSupabaseConfigured || !supabase) return;
     if (shippingDocs.some(d => d.type === 'serah_terima' && d.date === viewDate)) return;
     let alive = true;
     supabase.from('bast_docs').select('*').eq('date', viewDate).then(({ data, error }) => {
-      if (!alive || error || !data?.length) return;
+      if (!alive) return;
+      if (error) { setErrorMsg(`Gagal membaca BAST dari Supabase: ${error.message}`); return; }
+      if (!data?.length) return;
       const hydrated = data.map((d: any) => ({
         id: d.id, type: 'serah_terima', date: d.date, status: d.status, is_locked: !!d.is_locked,
         bastNo: d.bast_no, bastSekolah: d.bast_sekolah, bastDriver: d.bast_driver, bastPenerima: d.bast_penerima,
         bastBarang: d.bast_barang, bastJumlah: d.bast_jumlah, bastWaktu: d.bast_waktu, items: d.items || [],
-        imageUrl: d.photo_url || '', uploadedBy: d.uploaded_by || '', bastSignatureDriver: d.bast_signature_driver,
+        vehicleNumber: d.vehicle_number || '', comments: d.comments || '', imageUrl: d.photo_url || '', uploadedBy: d.uploaded_by || '', bastSignatureDriver: d.bast_signature_driver,
         bastSignatureReceiver: d.bast_signature_receiver, receiverName: d.bast_penerima || d.bast_sekolah || ''
       }));
       setShippingDocs(prev => [...prev.filter(d => !(d.type === 'serah_terima' && d.date === viewDate)), ...hydrated]);
@@ -239,91 +284,35 @@ export default function BASTView({
       console.warn("Error loading portion master data for BAST initialization:", err);
     }
 
-    const schools = [
-      "MA Assa'adah",
-      "MTS Assa'adah II",
-      "SMA Assa'adah",
-      "SMK Assa'adah",
-      "Desa Sidokumpul",
-      "Desa Sukowati"
-    ];
-
-    const getPortionCount = (schName: string) => {
-      if (schName === "MA Assa'adah") {
-        return (portions.MA?.guru || 0) + (portions.MA?.siswa || 0);
-      }
-      if (schName === "MTS Assa'adah II") {
-        return (portions["MTS II"]?.guru || 0) + (portions["MTS II"]?.siswa || 0);
-      }
-      if (schName === "SMA Assa'adah") {
-        return (portions.SMA?.guru || 0) + (portions.SMA?.siswa || 0);
-      }
-      if (schName === "SMK Assa'adah") {
-        return (portions.SMK?.guru || 0) + (portions.SMK?.siswa || 0);
-      }
-      if (schName === "Desa Sukowati") {
-        return (portions.Sukowati?.besar || 0) + (portions.Sukowati?.kecil || 0);
-      }
-      if (schName === "Desa Sidokumpul") {
-        return (portions.Sidokumpul?.besar || 0) + (portions.Sidokumpul?.kecil || 0);
-      }
-      return 265; // absolute default
-    };
-
-    const getPortionBreakdown = (schName: string) => {
-      if (schName === "MA Assa'adah") {
-        return `(Siswa: ${portions.MA?.siswa || 0}, Guru: ${portions.MA?.guru || 0})`;
-      }
-      if (schName === "MTS Assa'adah II") {
-        return `(Siswa: ${portions["MTS II"]?.siswa || 0}, Guru: ${portions["MTS II"]?.guru || 0})`;
-      }
-      if (schName === "SMA Assa'adah") {
-        return `(Siswa: ${portions.SMA?.siswa || 0}, Guru: ${portions.SMA?.guru || 0})`;
-      }
-      if (schName === "SMK Assa'adah") {
-        return `(Siswa: ${portions.SMK?.siswa || 0}, Guru: ${portions.SMK?.guru || 0})`;
-      }
-      if (schName === "Desa Sukowati") {
-        return `(Porsi Besar: ${portions.Sukowati?.besar || 0}, Porsi Kecil: ${portions.Sukowati?.kecil || 0})`;
-      }
-      if (schName === "Desa Sidokumpul") {
-        return `(Porsi Besar: ${portions.Sidokumpul?.besar || 0}, Porsi Kecil: ${portions.Sidokumpul?.kecil || 0})`;
-      }
-      return '';
-    };
-
-    const parts = selectedDate.split('-');
+    const parts = initDate.split('-');
     const year = parts[0] || '2026';
     const month = parts[1] || '07';
     const day = parts[2] || '15';
 
-    const newDocs = schools.map((sch, idx) => {
+    const menuList = allDayMenus.find(menu => menu.date === initDate)?.menuList || [];
+    const newDocs = DELIVERY_TARGETS.map((sch, idx) => {
       const abbrev = generateAbbrev(sch);
       const bastNoStr = `${day}/${abbrev}/BAST/MBGQOM/${month}/${year}`;
-      const isDesa = sch.toLowerCase().includes('desa');
-      const docQty = getPortionCount(sch);
-      const breakdownStr = getPortionBreakdown(sch);
-      const defaultPenerima = getRecipientName(sch);
-      const defaultWaktu = getDefaultReceiptTime(sch);
+      const details = getDeliveryDetails(sch, portions);
       
       return {
-        id: `bast-${selectedDate}-${idx}-${Date.now()}`,
+        id: `bast-${initDate}-${idx}-${Date.now()}`,
         type: 'serah_terima',
-        date: selectedDate,
-        vehicleNumber: 'W 1234 BGH',
+        date: initDate,
+        vehicleNumber: details.vehicleNumber,
         imageUrl: 'https://images.unsplash.com/photo-1450133064473-71024230f91b?w=500&auto=format&fit=crop&q=80',
-        comments: `Dokumen serah terima makanan bergizi untuk ${sch} ${breakdownStr}.`,
+        comments: buildBastComment(sch, portions, menuList),
         uploadedBy: loggedInUser?.email || 'driver@sppg.com',
         uploadedAt: new Date().toISOString(),
-        receiverName: defaultPenerima,
+        receiverName: details.recipient,
         status: 'Aktif',
         bastNo: bastNoStr,
-        bastDriver: loggedInUser?.role === UserRole.DRIVER ? loggedInUser.fullName : DRIVERS_LIST[0],
+        bastDriver: details.driver,
         bastSekolah: sch,
-        bastPenerima: defaultPenerima,
+        bastPenerima: details.recipient,
         bastBarang: 'PAKET PROGRAM MAKAN BERGIZI GRATIS',
-        bastJumlah: docQty,
-        bastWaktu: defaultWaktu,
+        bastJumlah: details.total,
+        bastWaktu: details.time,
         bastSignatureDriver: '',
         bastSignatureReceiver: ''
       };
@@ -340,7 +329,7 @@ export default function BASTView({
     const { error } = await supabase.from('bast_docs').upsert({
       id: doc.id, date: doc.date, bast_no: doc.bastNo, bast_sekolah: doc.bastSekolah,
       bast_driver: doc.bastDriver, bast_penerima: doc.bastPenerima, bast_barang: doc.bastBarang,
-      bast_jumlah: doc.bastJumlah, bast_waktu: doc.bastWaktu, items: doc.items || [], photo_url: doc.imageUrl || '',
+      bast_jumlah: doc.bastJumlah, bast_waktu: doc.bastWaktu, vehicle_number: doc.vehicleNumber || '', comments: doc.comments || '', items: doc.items || [], photo_url: doc.imageUrl || '',
       bast_signature_driver: doc.bastSignatureDriver || null, bast_signature_receiver: doc.bastSignatureReceiver || null,
       status: doc.status || 'published', is_locked: !!doc.is_locked, uploaded_by: doc.uploadedBy || ''
     });
@@ -440,6 +429,51 @@ export default function BASTView({
   };
 
   const dateText = getIndonesianDateText(selectedDate);
+  const driverPMCards = isDriver ? (
+    <section className="rounded-2xl border border-neutral-200 bg-white p-4 shadow-2xs print:hidden">
+      <div className="mb-3">
+        <p className="text-[10px] font-extrabold uppercase tracking-wider text-neutral-500">Pilih PM / lokasi penerima</p>
+        <p className="mt-0.5 text-xs text-neutral-600">Pilih satu PM untuk membuka BAST pada tanggal {viewDate}.</p>
+      </div>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {DELIVERY_TARGETS.map(target => {
+          const doc = shippingDocs.find(item => item.type === 'serah_terima' && item.date === viewDate && item.bastSekolah === target);
+          const selected = selectedPM === target;
+          return (
+            <button
+              type="button"
+              key={target}
+              onClick={() => { setSelectedPM(target); setActiveDoc(doc || null); }}
+              className={`rounded-xl border p-3 text-left transition ${selected ? 'border-emerald-700 bg-emerald-50 shadow-sm' : 'border-neutral-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/40'}`}
+            >
+              <span className="block text-xs font-extrabold text-neutral-900">{target}</span>
+              <span className={`mt-1 block text-[10px] font-bold ${doc ? 'text-emerald-700' : 'text-neutral-400'}`}>{doc ? 'Buka berkas BAST' : 'Berkas belum tersedia'}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  ) : null;
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-2xl border border-neutral-200 bg-white p-8 text-center">
+        <RefreshCw className="h-7 w-7 animate-spin text-emerald-700" />
+        <div>
+          <h2 className="text-sm font-extrabold text-neutral-800">Memuat BAST dari Supabase</h2>
+          <p className="mt-1 text-xs text-neutral-500">Menunggu data tanggal, PM, porsi, dan menu selesai disinkronkan.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (databaseError) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-900">
+        <strong>Koneksi Supabase belum berhasil.</strong><br />{databaseError}
+      </div>
+    );
+  }
 
   // If viewing a document in full-depth
   if (activeDoc) {
@@ -447,7 +481,8 @@ export default function BASTView({
     const isFieldReadOnly = isLocked || currentUserRole === UserRole.PENERIMA;
     return (
       <div className="space-y-6 animate-fade-in" id="bast-printed-view">
-        {!isAdminOrAslap && <MonthlyDocumentCards table="bast_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDoc(null); setActiveDateView(date); onSelectDate?.(date); }} />}
+        {!isPrimaryAdmin && <DocumentDatePicker selectedDate={viewDate} onSelectDate={(date) => { setActiveDoc(null); setSelectedPM(''); setActiveDateView(date); onSelectDate?.(date); }} />}
+        {driverPMCards}
         {/* Sticky Action Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-neutral-50 p-4 rounded-2xl border border-neutral-200 shadow-3xs print:hidden">
           {!restrictedLocation && (
@@ -469,7 +504,7 @@ export default function BASTView({
               Cetak / Simpan PDF
             </button>
 
-            {!isLocked ? (
+            {!isLocked && !isDriver ? (
               <button
                 onClick={handleFinalize}
                 className="flex items-center gap-1.5 text-xs font-bold text-white bg-emerald-800 hover:bg-emerald-950 px-4 py-2 rounded-xl cursor-pointer shadow-sm transition-transform active:scale-[0.98]"
@@ -477,7 +512,7 @@ export default function BASTView({
                 <Check className="h-4 w-4" />
                 Kunci & Rekap BAST
               </button>
-            ) : (
+            ) : !isDriver ? (
               <button
                 onClick={handleUnlock}
                 className="flex items-center gap-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-3.5 py-2 rounded-xl cursor-pointer shadow-3xs"
@@ -485,7 +520,7 @@ export default function BASTView({
                 <RefreshCw className="h-4 w-4 text-amber-600" />
                 Buka Kunci (Edit Dokumen)
               </button>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -779,7 +814,7 @@ export default function BASTView({
                       alt="Ttd Receiver"
                       className="max-h-full max-w-full object-contain"
                     />
-                    {!isLocked && (
+                    {!isLocked && !isDriver && (
                       <button
                         onClick={() => handleFieldChange('bastSignatureReceiver', '')}
                         className="absolute top-1 right-1 bg-red-500 hover:bg-red-700 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer print:hidden"
@@ -788,6 +823,8 @@ export default function BASTView({
                       </button>
                     )}
                   </>
+                ) : isDriver ? (
+                  <span className="px-3 text-center text-[10px] font-semibold leading-relaxed text-neutral-500">Tanda tangan Pihak Kedua hanya diisi oleh penerima PM.</span>
                 ) : (
                   <button
                     onClick={() => setActiveSigRequest({
@@ -828,7 +865,7 @@ export default function BASTView({
   }
 
   // Grid of Date Cards View
-  if (!activeDateView) {
+  if (!activeDateView && isPrimaryAdmin) {
     // Collect all dates from menus
     const dates = [...(allDayMenus || [])].filter(menu => menu.date.startsWith(selectedDate.slice(0, 7))).sort((a,b) => a.date.localeCompare(b.date));
     
@@ -902,10 +939,11 @@ export default function BASTView({
 
   return (
     <div className="space-y-6 animate-fade-in" id="bast-dashboard">
-      <MonthlyDocumentCards table="bast_docs" selectedDate={selectedDate} onSelectDate={(date) => { setActiveDateView(date); onSelectDate?.(date); }} />
+      {!isPrimaryAdmin && <DocumentDatePicker selectedDate={viewDate} onSelectDate={(date) => { setSelectedPM(''); setActiveDateView(date); onSelectDate?.(date); }} />}
+      {driverPMCards}
       
-      {/* 1. Header & Title Section */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* 1. Header & Title Section - PM opens its document directly. */}
+      {currentUserRole !== UserRole.PENERIMA && <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-extrabold font-sans text-neutral-900 flex items-center gap-2 tracking-tight">
@@ -918,7 +956,7 @@ export default function BASTView({
           </div>
           <p className="text-xs text-neutral-500">Pencatatan formalitas serah terima paket hidangan bergizi harian dari tim dapur kepada pihak lembaga sasaran.</p>
         </div>
-      </div>
+      </div>}
 
       {successMsg && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs flex items-center gap-2 animate-fade-in">
