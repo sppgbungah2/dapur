@@ -351,6 +351,7 @@ export function getRecipientName(schoolOrLocation: string): string {
   const norm = schoolOrLocation.toLowerCase().trim();
   if (norm.includes('sidokumpul')) return 'Susianti Nengsih';
   if (norm.includes('sukowati')) return 'Nurul Mahmudah';
+  if (norm.includes('gumeng')) return '';
   if (norm.includes('smk')) return 'Ibu Sumiati';
   if (norm.includes('mts')) return 'Ibu Ina Mariana';
   if (norm.includes('sma')) return 'Ibu Wahyuni';
@@ -363,6 +364,7 @@ export function getDefaultReceiptTime(schoolOrLocation: string): string {
   const norm = schoolOrLocation.toLowerCase().trim();
   if (norm.includes('sidokumpul')) return '07.00 WIB';
   if (norm.includes('sukowati')) return '07.30 WIB';
+  if (norm.includes('gumeng')) return '07.00 WIB';
   if (norm.includes('sma')) return '07.30 WIB';
   if (norm.includes('ma')) return '08.00 WIB';
   if (norm.includes('mts')) return '09.00 WIB';
@@ -414,6 +416,7 @@ export function getTabFromPage(pageName: string): number {
   if (norm === 'surat-jalan' || norm === 'sj') return 20;
   if (norm === 'organoleptik') return 21;
   if (norm === 'master-porsi' || norm === 'master_porsi') return 22;
+  if (norm === 'borongan') return 24;
   return 23;
 }
 
@@ -428,6 +431,7 @@ export function getPageFromTab(tabNum: number): string {
   if (tabNum === 20) return 'surat-jalan';
   if (tabNum === 21) return 'organoleptik';
   if (tabNum === 22) return 'master-porsi';
+  if (tabNum === 24) return 'borongan';
   return '';
 }
 

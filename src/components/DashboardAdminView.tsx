@@ -9,7 +9,10 @@ import { SisaStokItem, OrderRequestItem, VolunteerComplaintItem } from './MockMo
 import PerencanaanMenuPorsi from "./PerencanaanMenuPorsi";
 import FullDocumentBundlePDF from "./FullDocumentBundlePDF";
 import { supabase, isSupabaseConfigured, getLocalDateString } from '../lib/supabase';
-import { setOperationalLock, publishOperationalDocuments } from '../lib/operationalLifecycle';
+import { setOperationalLock, publishOperationalDocuments, initializeOperationalDocuments, autoSignOperationalDocuments } from '../lib/operationalLifecycle';
+import PortionMasterView from './PortionMasterView';
+import SignatureImportView from './SignatureImportView';
+import { DELIVERY_TARGETS, getActiveDeliveryTargets, getDeliveryDetails } from '../utils/deliveryMaster';
 
 interface DashboardAdminViewProps {
   selectedDate: string;
@@ -27,6 +30,7 @@ interface DashboardAdminViewProps {
   setKeluhanList: React.Dispatch<React.SetStateAction<VolunteerComplaintItem[]>>;
   onSaveSopsToCloud?: (date?: string) => Promise<{ success: boolean; message: string }>;
   onSelectDate?: (date: string) => void;
+  boronganMode?: boolean;
 }
 
 export default function DashboardAdminView({
@@ -44,7 +48,8 @@ export default function DashboardAdminView({
   keluhanList,
   setKeluhanList,
   onSaveSopsToCloud,
-  onSelectDate
+  onSelectDate,
+  boronganMode = false
 }: DashboardAdminViewProps) {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isSetMasterOpen, setIsSetMasterOpen] = useState(false);
@@ -57,6 +62,95 @@ export default function DashboardAdminView({
   const [monthlyData, setMonthlyData] = useState<Record<string, any>>({});
   const [loadingMonth, setLoadingMonth] = useState(false);
   const [lockMessage, setLockMessage] = useState<string | null>(null);
+  const [processingDate, setProcessingDate] = useState<string | null>(null);
+
+  const waitForInitializedDocuments = async (date: string) => {
+    if (!supabase) throw new Error('Supabase belum dikonfigurasi.');
+    const { data: portionData, error: portionError } = await supabase.from('master_porsi').select('portions').eq('date', date).maybeSingle();
+    if (portionError) throw portionError;
+    const expectedShipments = getActiveDeliveryTargets(portionData?.portions || DEFAULT_PORTIONS).length;
+    let counts = { sj: 0, bast: 0, orlep: 0, sop: 0 };
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const [sj, bast, orlep, sop] = await Promise.all([
+        supabase.from('surat_jalan_docs').select('id', { count: 'exact', head: true }).eq('date', date),
+        supabase.from('bast_docs').select('id', { count: 'exact', head: true }).eq('date', date),
+        supabase.from('organoleptik_docs').select('id', { count: 'exact', head: true }).eq('date', date),
+        supabase.from('sops').select('id', { count: 'exact', head: true }).eq('date', date)
+      ]);
+      const error = [sj, bast, orlep, sop].find(result => result.error)?.error;
+      if (error) throw error;
+      counts = { sj: sj.count || 0, bast: bast.count || 0, orlep: orlep.count || 0, sop: sop.count || 0 };
+      if (counts.sj >= expectedShipments && counts.bast >= expectedShipments && counts.orlep >= expectedShipments && counts.sop >= 7) return counts;
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    throw new Error(`Dokumen belum lengkap: Surat Jalan ${counts.sj}/${expectedShipments}, BAST ${counts.bast}/${expectedShipments}, Organoleptik ${counts.orlep}/${expectedShipments}, SOP ${counts.sop}/7. Klik “Lengkapi Dokumen” untuk mencoba inisiasi ulang.`);
+  };
+
+  const syncSignedDocumentsToApp = async (date: string) => {
+    if (!supabase) return;
+    const [sj, bast, orlep, sop] = await Promise.all([
+      supabase.from('surat_jalan_docs').select('*').eq('date', date),
+      supabase.from('bast_docs').select('*').eq('date', date),
+      supabase.from('organoleptik_docs').select('*').eq('date', date),
+      supabase.from('sops').select('*').eq('date', date)
+    ]);
+    const error = [sj, bast, orlep, sop].find(result => result.error)?.error;
+    if (error) throw error;
+    const documents = [
+      ...(sj.data || []).map((doc: any) => ({ id: doc.id, type: 'surat_jalan', date: doc.date, status: doc.status, is_locked: !!doc.is_locked, vehicleNumber: doc.vehicle_number || '', imageUrl: doc.photo_url || '', comments: doc.comments || '', uploadedBy: doc.uploaded_by || '', receiverName: doc.sj_kepada || '', sjNo: doc.sj_no, sjKepada: doc.sj_kepada, sjDriver: doc.sj_driver, sjWaktu: doc.sj_waktu, items: doc.items || [], sjRows: typeof doc.sj_rows === 'string' ? JSON.parse(doc.sj_rows) : doc.sj_rows || [], sjSignatureAslap: doc.sj_signature_aslap, sjSignatureReceiver: doc.sj_signature_receiver })),
+      ...(bast.data || []).map((doc: any) => ({ id: doc.id, type: 'serah_terima', date: doc.date, status: doc.status, is_locked: !!doc.is_locked, vehicleNumber: doc.vehicle_number || '', imageUrl: doc.photo_url || '', comments: doc.comments || '', uploadedBy: doc.uploaded_by || '', receiverName: doc.bast_penerima || doc.bast_sekolah || '', bastNo: doc.bast_no, bastDriver: doc.bast_driver, bastSekolah: doc.bast_sekolah, bastPenerima: doc.bast_penerima, bastBarang: doc.bast_barang, bastJumlah: doc.bast_jumlah, bastWaktu: doc.bast_waktu, items: doc.items || [], bastSignatureDriver: doc.bast_signature_driver, bastSignatureReceiver: doc.bast_signature_receiver })),
+      ...(orlep.data || []).map((doc: any) => ({ id: doc.id, type: 'organoleptik', date: doc.date, status: doc.status, is_locked: !!doc.is_locked, imageUrl: doc.photo_url || '', comments: doc.notes || doc.orlep_kritik || '', uploadedBy: doc.uploaded_by || '', orlepJam: doc.orlep_jam, orlepPanelis: doc.orlep_panelis || doc.tester_name, orlepDesa: doc.orlep_desa, orlepMenu: doc.orlep_menu || doc.menu_name, orlepKritik: doc.orlep_kritik, organoleptikSuhu: doc.organoleptik_suhu, orlepGrid: typeof doc.orlep_grid === 'string' ? JSON.parse(doc.orlep_grid) : doc.orlep_grid, orlepSignature: doc.orlep_signature }))
+    ];
+    setShippingDocs(prev => [...prev.filter(doc => doc.date !== date), ...documents]);
+    if (setSops) {
+      const updatedById = new Map((sop.data || []).map((doc: any) => [doc.id, doc]));
+      setSops(prev => prev.map(item => {
+        const doc = updatedById.get(item.id);
+        return doc ? { ...item, status: doc.status, isLocked: !!doc.is_locked, signerSupervisor: doc.signer_supervisor, signatureSupervisorUrl: doc.signature_supervisor_url, signedSupervisorAt: doc.signed_supervisor_at, signerCoordinator: doc.signer_coordinator, signatureCoordinatorUrl: doc.signature_coordinator_url, signedCoordinatorAt: doc.signed_coordinator_at } : item;
+      }));
+    }
+  };
+
+  const handleBulkInitialize = async (date: string) => {
+    if (!isSupabaseConfigured || !supabase) return setLockMessage('Supabase belum dikonfigurasi.');
+    setProcessingDate(date);
+    setLockMessage(`Menginisiasi seluruh berkas ${date} di Supabase...`);
+    try {
+      const { data: menu, error } = await supabase.from('day_menus').select('menu_list').eq('date', date).maybeSingle();
+      if (error) throw error;
+      const menuList = Array.isArray(menu?.menu_list) ? menu.menu_list : [];
+      if (!menuList.length) throw new Error('Menu untuk tanggal ini belum diimpor.');
+      await initializeOperationalDocuments(date, menuList, 'admin@sppg.com');
+      await waitForInitializedDocuments(date);
+      const { data: portionData } = await supabase.from('master_porsi').select('portions').eq('date', date).maybeSingle();
+      const expectedShipments = getActiveDeliveryTargets(portionData?.portions || DEFAULT_PORTIONS).length;
+      setLockMessage(`Seluruh draft Surat Jalan (${expectedShipments}), BAST (${expectedShipments}), Organoleptik (${expectedShipments}), dan SOP (7) ${date} sudah lengkap di Supabase.`);
+      await fetchMonthlyData(currentMonth);
+    } catch (err) {
+      setLockMessage(`Inisiasi masal gagal: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setProcessingDate(null);
+    }
+  };
+
+  const handleAutoSign = async (date: string) => {
+    if (!confirm(`Paraf otomatis dan kunci seluruh dokumen ${date}? Tindakan ini membuat stempel resmi tampil dan dokumen tidak dapat diedit.`)) return;
+    setProcessingDate(date);
+    setLockMessage(`Memproses paraf, stempel, dan sinkronisasi Supabase untuk ${date}...`);
+    try {
+      await autoSignOperationalDocuments(date);
+      // Memberi waktu singkat pada cache/realtime Supabase, kemudian memuat ulang status dari sumber utama.
+      await new Promise(resolve => setTimeout(resolve, 350));
+      await syncSignedDocumentsToApp(date);
+      setLockMessage(`Paraf otomatis, stempel resmi, dan status Terkunci berhasil tersinkronisasi untuk ${date}.`);
+      await fetchMonthlyData(currentMonth);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setLockMessage(`Paraf otomatis gagal: ${detail}${detail.includes('TTD') ? ' Lengkapi atau unggah ulang baris lokasi/divisi tersebut melalui Impor Masal TTD.' : ''}`);
+    } finally {
+      setProcessingDate(null);
+    }
+  };
 
   const handleLockSelectedDate = async () => {
     if (!confirm(`Kunci seluruh dokumen ${selectedDate}? Form dan TTD tidak dapat diubah.`)) return;
@@ -138,29 +232,18 @@ if (isSupabaseConfigured && supabase) {
         let totalPM = 0;
         if (dayPorsi && dayPorsi.portions) {
           const p = dayPorsi.portions;
-          totalPM = ((p.MA?.siswa || 0) + (p.MA?.guru || 0)) +
-                    ((p["MTS II"]?.siswa || 0) + (p["MTS II"]?.guru || 0)) +
-                    ((p.SMK?.siswa || 0) + (p.SMK?.guru || 0)) +
-                    ((p.SMA?.siswa || 0) + (p.SMA?.guru || 0)) +
-                    ((p.Sukowati?.besar || 0) + (p.Sukowati?.kecil || 0)) +
-                    ((p.Sidokumpul?.besar || 0) + (p.Sidokumpul?.kecil || 0));
+          totalPM = DELIVERY_TARGETS.reduce((total, target) => total + getDeliveryDetails(target, p).total, 0);
         }
 
         // Calculate expected shipments based on configured portions
         let expectedShipments = 0;
         if (dayPorsi && dayPorsi.portions) {
           const p = dayPorsi.portions;
-          if ((p.MA?.siswa || 0) > 0 || (p.MA?.guru || 0) > 0) expectedShipments++;
-          if ((p["MTS II"]?.siswa || 0) > 0 || (p["MTS II"]?.guru || 0) > 0) expectedShipments++;
-          if ((p.SMK?.siswa || 0) > 0 || (p.SMK?.guru || 0) > 0) expectedShipments++;
-          if ((p.SMA?.siswa || 0) > 0 || (p.SMA?.guru || 0) > 0) expectedShipments++;
-          if ((p.Sukowati?.besar || 0) > 0 || (p.Sukowati?.kecil || 0) > 0) expectedShipments++;
-          if ((p.Sidokumpul?.besar || 0) > 0 || (p.Sidokumpul?.kecil || 0) > 0) expectedShipments++;
+          expectedShipments = getActiveDeliveryTargets(p).length;
         }
         
         // If no portions configured for the day, maybe default to 6 to show they are missing, 
         // or default to 0 if we assume nothing should be shipped. Let's use 6 as default expected if portions exist.
-        if (expectedShipments === 0 && totalPM > 0) expectedShipments = 6;
         if (totalPM === 0) expectedShipments = 0; // Don't expect docs if 0 portions
 
 
@@ -196,8 +279,11 @@ if (isSupabaseConfigured && supabase) {
         const isBastComplete = bastStatus.startsWith('Lengkap');
         const isOrlepComplete = orlepStatus.startsWith('Lengkap');
         const isSopComplete = sopStatus.startsWith('Lengkap');
+        const hasAllDocuments = daySj.length >= expectedShipments && dayBast.length >= expectedShipments && dayOrlep.length >= expectedShipments && daySop.length >= 7;
+        const hasAnyDocument = daySj.length + dayBast.length + dayOrlep.length + daySop.length > 0;
         const isComplete = isSjComplete && isBastComplete && isOrlepComplete && isSopComplete;
         const isLocked = [...daySj, ...dayBast, ...dayOrlep, ...daySop].length > 0 && [...daySj, ...dayBast, ...dayOrlep, ...daySop].every((d: any) => d.isLocked || d.is_locked);
+        const isAutoSigned = isLocked && isComplete && sjStatus === 'Lengkap & TTD' && bastStatus === 'Lengkap & TTD' && orlepStatus === 'Lengkap & TTD' && sopStatus === 'Lengkap & TTD';
 
         aggregated[dStr] = {
           menu: dayMenu ? (dayMenu.menu_list ? dayMenu.menu_list.join(', ') : (dayMenu.menuList ? dayMenu.menuList.join(', ') : '')) : '-',
@@ -207,7 +293,10 @@ if (isSupabaseConfigured && supabase) {
           orlep: orlepStatus,
           sop: sopStatus,
           isComplete,
-          lifecycleStatus: isLocked ? 'Terkunci (Locked)' : isComplete ? 'Lengkap & Terbit' : (daySj.length + dayBast.length + dayOrlep.length + daySop.length > 0 ? 'Draft / Dalam Pengisian' : 'Belum Diinisiasi'),
+          hasAllDocuments,
+          hasAnyDocument,
+          isAutoSigned,
+          lifecycleStatus: isAutoSigned ? 'Lengkap & TTD' : isLocked ? 'Terkunci (Locked)' : hasAllDocuments ? 'Siap Paraf Otomatis' : hasAnyDocument ? 'Dokumen Belum Lengkap' : 'Belum Diinisiasi',
           detailStatus: {
             sj: sjStatus,
             bast: bastStatus,
@@ -269,18 +358,18 @@ if (isSupabaseConfigured && supabase) {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight font-sans">
-                Dashboard Admin Utama
+                {boronganMode ? 'Borongan Dokumen' : 'Dashboard Admin Utama'}
               </h1>
-              <button onClick={handleLockSelectedDate} className="mt-3 rounded-lg bg-amber-400 px-3 py-2 text-xs font-extrabold text-neutral-900 hover:bg-amber-300">Rekap & Kunci Dokumen {selectedDate}</button>
-              <button onClick={handlePublishSelectedDate} className="mt-3 ml-2 rounded-lg bg-blue-400 px-3 py-2 text-xs font-extrabold text-neutral-900 hover:bg-blue-300">Terbitkan Berkas {selectedDate}</button>
+              {!boronganMode && <><button onClick={handleLockSelectedDate} className="mt-3 rounded-lg bg-amber-400 px-3 py-2 text-xs font-extrabold text-neutral-900 hover:bg-amber-300">Rekap & Kunci Dokumen {selectedDate}</button>
+              <button onClick={handlePublishSelectedDate} className="mt-3 ml-2 rounded-lg bg-blue-400 px-3 py-2 text-xs font-extrabold text-neutral-900 hover:bg-blue-300">Terbitkan Berkas {selectedDate}</button></>}
               {lockMessage && <p className="mt-2 text-xs font-semibold">{lockMessage}</p>}
               <p className="text-emerald-100 text-xs mt-1 font-light max-w-xl">
-                Selamat datang kembali. Di sini Anda dapat memantau kelengkapan dokumen operasional, membuat draf tugas, menyetujui anggaran belanja, serta menganalisis efisiensi dapur.
+                {boronganMode ? 'Impor master untuk banyak tanggal, inisiasi seluruh berkas sekali klik, kemudian paraf otomatis memakai URL TTD yang Anda unggah.' : 'Selamat datang kembali. Di sini Anda dapat memantau kelengkapan dokumen operasional, membuat draf tugas, menyetujui anggaran belanja, serta menganalisis efisiensi dapur.'}
               </p>
             </div>
             
             {/* Quick Action Buttons */}
-            <div className="flex items-center gap-2 flex-wrap">
+            {!boronganMode && <div className="flex items-center gap-2 flex-wrap">
               {isSetMasterOpen && (
                 <input 
                   type="date"
@@ -296,7 +385,7 @@ if (isSupabaseConfigured && supabase) {
                 <Database className="w-4 h-4" />
                 {isSetMasterOpen ? 'Tutup Set Master' : 'Set Master'}
               </button>
-            </div>
+            </div>}
           </div>
         </div>
       </div>
@@ -308,8 +397,12 @@ if (isSupabaseConfigured && supabase) {
         </div>
       )}
 
+      {lockMessage && boronganMode && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-bold text-emerald-800">{lockMessage}</div>}
+
+      {boronganMode && <><PortionMasterView selectedDate={selectedDate} allDayMenus={allDayMenus} importOnly /><SignatureImportView /></>}
+
       {/* Set Master Expanded Section */}
-      {isSetMasterOpen && (
+      {!boronganMode && isSetMasterOpen && (
         <div className="animate-fade-in border border-emerald-200 bg-emerald-50/30 rounded-2xl p-4 space-y-4">
           <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-emerald-100 shadow-sm w-fit">
             <Calendar className="w-4 h-4 text-emerald-600" />
@@ -374,7 +467,7 @@ if (isSupabaseConfigured && supabase) {
                 <th className="px-4 py-3 border-b border-neutral-200 font-bold">BAST</th>
                 <th className="px-4 py-3 border-b border-neutral-200 font-bold">Organoleptik</th>
                 <th className="px-4 py-3 border-b border-neutral-200 font-bold">SOP</th>
-                <th className="px-4 py-3 border-b border-neutral-200 font-bold">Rekap Dokumen</th>
+                <th className="px-4 py-3 border-b border-neutral-200 font-bold">{boronganMode ? 'Aksi Borongan' : 'Rekap Dokumen'}</th>
               </tr>
             </thead>
             <tbody className="text-xs divide-y divide-neutral-100">
@@ -405,16 +498,25 @@ if (isSupabaseConfigured && supabase) {
                       <td className="px-4 py-3"><StatusBadge status={data.sop} /></td>
                       <td className="px-4 py-3">
                         <button
-                          onClick={() => { onSelectDate?.(date); setSelectedBundleDate(date); }}
+                          onClick={() => {
+                            if (boronganMode) {
+                              if (data.isAutoSigned) { onSelectDate?.(date); setSelectedBundleDate(date); }
+                              else if (!data.hasAllDocuments) void handleBulkInitialize(date);
+                              else if (data.isComplete) void handleAutoSign(date);
+                              return;
+                            }
+                            onSelectDate?.(date); setSelectedBundleDate(date);
+                          }}
+                          disabled={processingDate === date}
                           className={`font-bold px-3 py-1.5 rounded-xl shadow-xs text-xs flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 ${
                             data.isComplete 
                               ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
                               : 'bg-amber-500 hover:bg-amber-600 text-white'
-                          }`}
-                          title="Unduh / Cetak Kumpulan Semua Dokumen Bundle PDF (Surat Jalan, BAST, Organoleptik, SOP)"
+                          } ${processingDate === date ? 'opacity-70 cursor-wait' : ''}`}
+                          title={boronganMode ? 'Inisiasi semua berkas atau paraf otomatis' : 'Unduh / Cetak Kumpulan Semua Dokumen Bundle PDF (Surat Jalan, BAST, Organoleptik, SOP)'}
                         >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>{data.lifecycleStatus}</span>
+                          {processingDate === date ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : boronganMode && !data.hasAllDocuments ? <FileText className="w-3.5 h-3.5" /> : boronganMode && data.isAutoSigned ? <Printer className="w-3.5 h-3.5" /> : boronganMode ? <Check className="w-3.5 h-3.5" /> : <Printer className="w-3.5 h-3.5" />}
+                          <span>{processingDate === date ? 'Menyinkronkan...' : boronganMode ? (data.lifecycleStatus === 'Belum Diinisiasi' ? 'Inisiasi Masal' : data.isAutoSigned ? 'Lengkap & Terbit' : !data.hasAllDocuments ? 'Lengkapi Dokumen' : data.isComplete ? 'Paraf Otomatis' : data.lifecycleStatus) : data.lifecycleStatus}</span>
                         </button>
                       </td>
                     </tr>

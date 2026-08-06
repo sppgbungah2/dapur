@@ -7,7 +7,8 @@ export const DELIVERY_TARGETS = [
   "SMA Assa'adah",
   "SMK Assa'adah",
   'Desa Sidokumpul',
-  'Desa Sukowati'
+  'Desa Sukowati',
+  'Desa Gumeng'
 ] as const;
 
 type PortionEntry = { label: string; count: number };
@@ -18,7 +19,8 @@ const DELIVERY_ASSIGNMENTS: Record<string, { driver: string; vehicleNumber: stri
   "SMK Assa'adah": { driver: 'Faliqul Habibi', vehicleNumber: 'W 8006 EG' },
   "SMA Assa'adah": { driver: 'Faliqul Habibi', vehicleNumber: 'W 8006 EG' },
   'Desa Sukowati': { driver: 'Imam Durori', vehicleNumber: 'W 1420 BK' },
-  'Desa Sidokumpul': { driver: 'Imam Durori', vehicleNumber: 'W 1420 BK' }
+  'Desa Sidokumpul': { driver: 'Imam Durori', vehicleNumber: 'W 1420 BK' },
+  'Desa Gumeng': { driver: 'Imam Durori', vehicleNumber: 'W 1420 BK' }
 };
 
 export function getPortionEntries(target: string, portions: PortionConfig): PortionEntry[] {
@@ -28,7 +30,13 @@ export function getPortionEntries(target: string, portions: PortionConfig): Port
   if (target === "SMA Assa'adah") return [{ label: 'Porsi Siswa', count: portions.SMA?.siswa || 0 }, { label: 'Porsi Guru', count: portions.SMA?.guru || 0 }];
   if (target.includes('Sukowati')) return [{ label: 'Porsi Besar', count: portions.Sukowati?.besar || 0 }, { label: 'Porsi Kecil', count: portions.Sukowati?.kecil || 0 }];
   if (target.includes('Sidokumpul')) return [{ label: 'Porsi Besar', count: portions.Sidokumpul?.besar || 0 }, { label: 'Porsi Kecil', count: portions.Sidokumpul?.kecil || 0 }];
+  if (target.includes('Gumeng')) return [{ label: 'Porsi Besar', count: portions.Gumeng?.besar || 0 }, { label: 'Porsi Kecil', count: portions.Gumeng?.kecil || 0 }];
   return [];
+}
+
+/** Lokasi dengan PM nol tidak memerlukan dokumen distribusi pada tanggal tersebut. */
+export function getActiveDeliveryTargets(portions: PortionConfig) {
+  return DELIVERY_TARGETS.filter(target => getDeliveryDetails(target, portions).total > 0);
 }
 
 export function getDeliveryDetails(target: string, portions: PortionConfig) {

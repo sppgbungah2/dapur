@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { DayMenu } from '../types';
-import { Save, Loader2, Utensils, Users, CheckCircle, AlertTriangle, Calendar, Layers } from 'lucide-react';
+import { Save, Loader2, Utensils, Users, CheckCircle, AlertTriangle, Calendar, Layers, Upload, Download, FileSpreadsheet } from 'lucide-react';
 import { updateExistingDocsWithPortions } from '../utils/generateDocs';
 
 export interface PortionConfig {
@@ -11,6 +12,7 @@ export interface PortionConfig {
   SMA?: { siswa: number; guru: number };
   Sukowati?: { besar: number; kecil: number };
   Sidokumpul?: { besar: number; kecil: number };
+  Gumeng?: { besar: number; kecil: number };
 }
 
 export const DEFAULT_PORTIONS: PortionConfig = {
@@ -19,7 +21,8 @@ export const DEFAULT_PORTIONS: PortionConfig = {
   SMK: { siswa: 0, guru: 0 },
   SMA: { siswa: 0, guru: 0 },
   Sukowati: { besar: 0, kecil: 0 },
-  Sidokumpul: { besar: 0, kecil: 0 }
+  Sidokumpul: { besar: 0, kecil: 0 },
+  Gumeng: { besar: 0, kecil: 0 }
 };
 
 interface PortionMasterViewProps {
@@ -28,6 +31,7 @@ interface PortionMasterViewProps {
   shippingDocs?: any[];
   setShippingDocs?: React.Dispatch<React.SetStateAction<any[]>>;
   onSelectDate?: (date: string) => void;
+  importOnly?: boolean;
 }
 
 export interface MasterPortionItem {
@@ -36,12 +40,51 @@ export interface MasterPortionItem {
   updated_at?: string;
 }
 
+type BulkImportRow = {
+  date: string;
+  menuList?: string[];
+  portions?: PortionConfig;
+};
+
+const REQUIRED_PORTION_COLUMNS = [
+  'MA Siswa', 'MA Guru', 'MTS II Siswa', 'MTS II Guru', 'SMK Siswa', 'SMK Guru',
+  'SMA Siswa', 'SMA Guru', 'Sukowati Besar', 'Sukowati Kecil', 'Sidokumpul Besar', 'Sidokumpul Kecil', 'Gumeng Besar', 'Gumeng Kecil'
+];
+
+const normalizeHeader = (value: unknown) => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+const getCell = (row: Record<string, unknown>, aliases: string[]) => {
+  const found = Object.entries(row).find(([key]) => aliases.includes(normalizeHeader(key)));
+  return found?.[1];
+};
+
+const parseImportDate = (value: unknown): string | null => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  if (typeof value === 'number' && value > 20000 && value < 80000) {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
+  }
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  const iso = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+  const indonesian = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  if (indonesian) return `${indonesian[3]}-${indonesian[2].padStart(2, '0')}-${indonesian[1].padStart(2, '0')}`;
+  return null;
+};
+
+const toPortionNumber = (value: unknown) => {
+  const number = Number(String(value ?? '').replace(/[^0-9.-]/g, ''));
+  return Number.isFinite(number) && number >= 0 ? Math.floor(number) : 0;
+};
+
 export default function PortionMasterView({
   selectedDate,
   allDayMenus = [],
   shippingDocs = [],
   setShippingDocs,
-  onSelectDate
+  onSelectDate,
+  importOnly = false
 }: PortionMasterViewProps) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -50,6 +93,8 @@ export default function PortionMasterView({
   const [menuText, setMenuText] = useState('');
   const [portions, setPortions] = useState<PortionConfig>(DEFAULT_PORTIONS);
   const [allMasterPortions, setAllMasterPortions] = useState<MasterPortionItem[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchData();
@@ -124,7 +169,7 @@ export default function PortionMasterView({
     const sma = (p.SMA?.guru || 0) + (p.SMA?.siswa || 0);
     const suko = (p.Sukowati?.besar || 0) + (p.Sukowati?.kecil || 0);
     const sido = (p.Sidokumpul?.besar || 0) + (p.Sidokumpul?.kecil || 0);
-    return ma + mts + smk + sma + suko + sido;
+    return ma + mts + smk + sma + suko + sido + (p.Gumeng?.besar || 0) + (p.Gumeng?.kecil || 0);
   };
 
   const handleSave = async () => {
@@ -139,8 +184,7 @@ export default function PortionMasterView({
         await supabase.from('day_menus').upsert({
           date: selectedDate,
           menu_list: menuList,
-          created_by: 'Admin',
-          updated_at: new Date().toISOString()
+          created_by: 'Admin'
         }, { onConflict: 'date' });
       } else {
         await supabase.from('day_menus').delete().eq('date', selectedDate);
@@ -149,8 +193,7 @@ export default function PortionMasterView({
       // Upsert Portions
       await supabase.from('master_porsi').upsert({
         date: selectedDate,
-        portions: portions,
-        updated_at: new Date().toISOString()
+        portions: portions
       }, { onConflict: 'date' });
 
       // Automatically update Surat Jalan & BAST documents if they exist for selectedDate
@@ -182,6 +225,133 @@ export default function PortionMasterView({
     }));
   };
 
+  const downloadImportTemplate = () => {
+    const worksheet = XLSX.utils.json_to_sheet([
+      {
+        Tanggal: '2025-11-01',
+        Menu: 'Nasi Putih, Ayam Bumbu, Sayur, Buah',
+        'MA Siswa': 0, 'MA Guru': 0, 'MTS II Siswa': 0, 'MTS II Guru': 0,
+        'SMK Siswa': 0, 'SMK Guru': 0, 'SMA Siswa': 0, 'SMA Guru': 0,
+        'Sukowati Besar': 0, 'Sukowati Kecil': 0, 'Sidokumpul Besar': 0, 'Sidokumpul Kecil': 0, 'Gumeng Besar': 0, 'Gumeng Kecil': 0
+      }
+    ]);
+    worksheet['!cols'] = [
+      { wch: 14 }, { wch: 48 }, ...REQUIRED_PORTION_COLUMNS.map(() => ({ wch: 18 }))
+    ];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Master Menu & Porsi');
+    XLSX.writeFile(workbook, 'Template_Impor_Master_Menu_Porsi.xlsx');
+  };
+
+  const parseImportRows = (rows: Record<string, unknown>[]) => {
+    const validRows: BulkImportRow[] = [];
+    const errors: string[] = [];
+    rows.forEach((row, index) => {
+      const rowNumber = index + 2;
+      const date = parseImportDate(getCell(row, ['tanggal', 'date', 'tgl']));
+      if (!date) {
+        errors.push(`Baris ${rowNumber}: kolom Tanggal tidak valid.`);
+        return;
+      }
+      const menuValue = getCell(row, ['menu', 'menuharian', 'menulist']);
+      const menuList = String(menuValue ?? '').split(/[,\n]/).map(item => item.trim()).filter(Boolean);
+      const portionValues = {
+        maSiswa: getCell(row, ['masiswa']), maGuru: getCell(row, ['maguru']),
+        mtsSiswa: getCell(row, ['mtsiisiswa', 'mtssiswa']), mtsGuru: getCell(row, ['mtsiiguru', 'mtsguru']),
+        smkSiswa: getCell(row, ['smksiswa']), smkGuru: getCell(row, ['smkguru']),
+        smaSiswa: getCell(row, ['smasiswa']), smaGuru: getCell(row, ['smaguru']),
+        sukoBesar: getCell(row, ['sukowatibesar']), sukoKecil: getCell(row, ['sukowatikecil']),
+        sidoBesar: getCell(row, ['sidokumpulbesar']), sidoKecil: getCell(row, ['sidokumpulkecil']),
+        // Alias Gumeng PM menjaga kompatibilitas dengan template sementara sebelumnya.
+        gumengBesar: getCell(row, ['gumengbesar', 'desagumengbesar', 'gumengpm', 'desagumengpm', 'gumeng']),
+        gumengKecil: getCell(row, ['gumengkecil', 'desagumengkecil'])
+      };
+      const suppliedPortionFields = Object.values(portionValues).filter(value => value !== undefined).length;
+      if (!menuList.length && suppliedPortionFields === 0) {
+        errors.push(`Baris ${rowNumber}: isi Menu atau seluruh kolom porsi.`);
+        return;
+      }
+      // Berkas lama dengan 12 kolom tetap didukung; Gumeng dianggap 0 bila kolomnya belum ada.
+      if (suppliedPortionFields > 0 && suppliedPortionFields < 12) {
+        errors.push(`Baris ${rowNumber}: data porsi belum lengkap. Gunakan semua 12 kolom lama atau 13 kolom template terbaru.`);
+        return;
+      }
+      validRows.push({
+        date,
+        ...(menuList.length ? { menuList } : {}),
+        ...(suppliedPortionFields >= 12 ? {
+          portions: {
+            MA: { siswa: toPortionNumber(portionValues.maSiswa), guru: toPortionNumber(portionValues.maGuru) },
+            'MTS II': { siswa: toPortionNumber(portionValues.mtsSiswa), guru: toPortionNumber(portionValues.mtsGuru) },
+            SMK: { siswa: toPortionNumber(portionValues.smkSiswa), guru: toPortionNumber(portionValues.smkGuru) },
+            SMA: { siswa: toPortionNumber(portionValues.smaSiswa), guru: toPortionNumber(portionValues.smaGuru) },
+            Sukowati: { besar: toPortionNumber(portionValues.sukoBesar), kecil: toPortionNumber(portionValues.sukoKecil) },
+            Sidokumpul: { besar: toPortionNumber(portionValues.sidoBesar), kecil: toPortionNumber(portionValues.sidoKecil) },
+            Gumeng: { besar: toPortionNumber(portionValues.gumengBesar), kecil: toPortionNumber(portionValues.gumengKecil) }
+          }
+        } : {})
+      });
+    });
+    return { validRows, errors };
+  };
+
+  const handleBulkImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!isSupabaseConfigured || !supabase) {
+      setMessage({ type: 'error', text: 'Supabase belum dikonfigurasi, sehingga impor tidak dapat disimpan.' });
+      return;
+    }
+    setIsImporting(true);
+    setMessage(null);
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!firstSheet) throw new Error('Berkas tidak memiliki lembar kerja.');
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: '' });
+      const { validRows, errors } = parseImportRows(rows);
+      if (errors.length) throw new Error(`${errors.slice(0, 5).join(' ')}${errors.length > 5 ? ` (+${errors.length - 5} kesalahan lain)` : ''}`);
+      if (!validRows.length) throw new Error('Tidak ada baris data yang dapat diimpor.');
+
+      const menuPayload = validRows.filter(row => row.menuList).map(row => ({ date: row.date, menu_list: row.menuList, created_by: 'Admin' }));
+      const portionPayload = validRows.filter(row => row.portions).map(row => ({ date: row.date, portions: row.portions }));
+      const [menuResult, portionResult] = await Promise.all([
+        menuPayload.length ? supabase.from('day_menus').upsert(menuPayload, { onConflict: 'date' }) : Promise.resolve({ error: null }),
+        portionPayload.length ? supabase.from('master_porsi').upsert(portionPayload, { onConflict: 'date' }) : Promise.resolve({ error: null })
+      ]);
+      if (menuResult.error) throw menuResult.error;
+      if (portionResult.error) throw portionResult.error;
+      setMessage({ type: 'success', text: `Impor berhasil: ${validRows.length} hari diproses (${menuPayload.length} menu, ${portionPayload.length} data porsi). Dokumen belum diterbitkan.` });
+      fetchData();
+      fetchAllMasterPortions();
+    } catch (err: any) {
+      console.error('Bulk import failed:', err);
+      setMessage({ type: 'error', text: `Impor gagal: ${err?.message || 'format berkas tidak dapat dibaca.'}` });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  if (importOnly) {
+    return (
+      <div className="rounded-3xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="flex items-center gap-2 text-lg font-black text-sky-950"><FileSpreadsheet className="h-5 w-5 text-sky-600" /> Impor Masal Menu & PM</h2>
+            <p className="mt-1 max-w-3xl text-xs leading-5 text-sky-800">Satu baris untuk satu tanggal. Berkas ini hanya untuk menu harian dan jumlah Penerima Manfaat (PM).</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={downloadImportTemplate} className="inline-flex items-center gap-2 rounded-xl border border-sky-300 bg-white px-3 py-2 text-xs font-bold text-sky-800"><Download className="h-4 w-4" /> Unduh Template</button>
+            <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkImport} className="hidden" />
+            <button onClick={() => importInputRef.current?.click()} disabled={isImporting} className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">{isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{isImporting ? 'Mengimpor...' : 'Unggah Berkas'}</button>
+          </div>
+        </div>
+        {message && <div className={`mt-4 rounded-xl border p-3 text-xs font-bold ${message.type === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{message.text}</div>}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
       <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-neutral-200">
@@ -204,6 +374,34 @@ export default function PortionMasterView({
             {saving ? 'Menyimpan...' : 'Simpan Perubahan'}
           </button>
         </div>
+
+        {/* Impor massal tersedia khusus pada menu Borongan. */}
+        {false && <div className="mb-6 rounded-2xl border border-sky-200 bg-sky-50 p-4 md:p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h3 className="flex items-center gap-2 font-bold text-sky-950">
+                <FileSpreadsheet className="h-5 w-5 text-sky-600" />
+                Impor Massal Master Menu & Porsi
+              </h3>
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-sky-800">
+                Unggah Excel (.xlsx, .xls) atau CSV dengan satu baris per tanggal. Data yang sudah ada pada tanggal yang sama akan diperbarui. Impor ini hanya menyiapkan master; dokumen tetap diinisiasi setelah data diperiksa.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={downloadImportTemplate} className="inline-flex items-center gap-2 rounded-xl border border-sky-300 bg-white px-3 py-2 text-xs font-bold text-sky-800 transition hover:bg-sky-100">
+                <Download className="h-4 w-4" /> Unduh Template
+              </button>
+              <input ref={importInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleBulkImport} className="hidden" />
+              <button onClick={() => importInputRef.current?.click()} disabled={isImporting || loading} className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-sky-700 disabled:opacity-50">
+                {isImporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                {isImporting ? 'Mengimpor...' : 'Unggah Berkas'}
+              </button>
+            </div>
+          </div>
+          <p className="mt-3 border-t border-sky-200 pt-3 text-[11px] text-sky-700">
+            Kolom wajib: <strong>Tanggal</strong>. Isi <strong>Menu</strong> untuk impor menu (pisahkan menu dengan koma); untuk impor porsi, isi seluruh kolom jumlah pada template.
+          </p>
+        </div>}
 
         {message && (
           <div className={`p-4 rounded-xl mb-6 flex items-center gap-3 text-sm font-bold ${
@@ -335,6 +533,14 @@ export default function PortionMasterView({
                         <label className="text-xs font-bold text-neutral-500 mb-1 block">Ompreng Kecil</label>
                         <input type="number" min="0" value={portions.Sidokumpul?.kecil || 0} onChange={e => handlePortionChange('Sidokumpul', 'kecil', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" />
                       </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+                    <h4 className="font-black text-sm text-neutral-800 mb-3 border-b pb-2">Desa Gumeng</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label className="text-xs font-bold text-neutral-500 mb-1 block">Porsi Besar</label><input type="number" min="0" value={portions.Gumeng?.besar || 0} onChange={e => handlePortionChange('Gumeng', 'besar', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" /></div>
+                      <div><label className="text-xs font-bold text-neutral-500 mb-1 block">Porsi Kecil</label><input type="number" min="0" value={portions.Gumeng?.kecil || 0} onChange={e => handlePortionChange('Gumeng', 'kecil', e.target.value)} className="w-full bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2 text-sm font-bold text-neutral-800 focus:outline-emerald-500" /></div>
                     </div>
                   </div>
 

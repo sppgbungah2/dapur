@@ -5415,6 +5415,29 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
       );
     }
 
+    case 24: {
+      return (
+        <DashboardAdminView
+          selectedDate={selectedDate || '2025-11-01'}
+          allDayMenus={allDayMenus}
+          sops={sops}
+          setSops={setSops}
+          onSaveMenu={onSaveMenu}
+          onGenerateSOPs={onGenerateSOPs}
+          onGoToTab={onGoToTab}
+          shippingDocs={shippingDocs}
+          setShippingDocs={setRawShippingDocs}
+          orderRequests={orderRequests}
+          setOrderRequests={setOrderRequests}
+          keluhanList={keluhanList}
+          setKeluhanList={setKeluhanList}
+          onSaveSopsToCloud={onSaveSopsToCloud}
+          onSelectDate={onSelectDate}
+          boronganMode={true}
+        />
+      );
+    }
+
     default:
       return (
         <div className="p-8 text-center text-neutral-400">

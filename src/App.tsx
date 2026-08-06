@@ -3,7 +3,7 @@ import {
   ClipboardList, Package, Wrench, ShieldCheck, ShoppingCart, Truck, 
   Camera, Users, Calendar, FileText, CheckCircle2, Flame, RefreshCcw, 
   HelpCircle, ChevronRight, UserCircle, Bell, ArrowRight, ShieldAlert,
-  Menu, Info, Eye, Trash2, ClipboardCheck, LayoutDashboard
+  Menu, Info, Eye, Trash2, ClipboardCheck, LayoutDashboard, FileSpreadsheet
 } from 'lucide-react';
 import { Division, UserRole, DayMenu, SOPDocument } from './types';
 import { PRESET_MENUS, DIVISION_CREATOR_MAP, generateInitialSOPsForDate, getDefaultTasksForDivision } from './presetData';
@@ -113,6 +113,7 @@ export default function App() {
     if (norm === 'surat-jalan' || norm === 'sj') return 20;
     if (norm === 'organoleptik') return 21;
     if (norm === 'master-porsi' || norm === 'master_porsi') return 22;
+    if (norm === 'borongan') return 24;
     return 23; // default to Dashboard Admin
   };
 
@@ -127,6 +128,7 @@ export default function App() {
     if (tabNum === 20) return 'surat-jalan';
     if (tabNum === 21) return 'organoleptik';
     if (tabNum === 22) return 'master-porsi';
+    if (tabNum === 24) return 'borongan';
     return '';
   };
 
@@ -640,6 +642,7 @@ export default function App() {
   // List of all capabilities
   const FEATURE_MENUS = [
     { num: 23, name: 'Dashboard Admin Utama', icon: LayoutDashboard, category: 'Kontrol Utama', badge: 'BARU' },
+    { num: 24, name: 'Borongan', icon: FileSpreadsheet, category: 'Kontrol Utama', badge: 'REKAP' },
     { num: 15, name: 'SOP Harian Digital', icon: CheckCircle2, category: 'Kontrol Kualitas', badge: 'UTAMA' },
     { num: 10, name: 'Master Menu', icon: Calendar, category: 'Perencanaan' },
     { num: 22, name: 'Master Jumlah Porsi', icon: Users, category: 'Perencanaan' },

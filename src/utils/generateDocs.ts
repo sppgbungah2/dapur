@@ -1,7 +1,7 @@
 import { PortionConfig, DEFAULT_PORTIONS } from '../components/PortionMasterView';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { getRecipientName, getDefaultReceiptTime, generateAbbrev } from './docHelpers';
-import { DELIVERY_TARGETS, buildBastComment, buildSuratJalanRows, getDeliveryDetails } from './deliveryMaster';
+import { buildBastComment, buildSuratJalanRows, getActiveDeliveryTargets, getDeliveryDetails } from './deliveryMaster';
 
 export async function fetchPortionsForDate(date: string): Promise<PortionConfig> {
   let portions: PortionConfig = { ...DEFAULT_PORTIONS };
@@ -55,17 +55,8 @@ export async function generateInitialDocsAsync(
   const month = dateParts[1] || '07';
   const day = dateParts[2] || '19';
 
-  const schools = DELIVERY_TARGETS;
-
-  const getPortionCount = (schName: string) => {
-    if (schName === "MA Assa'adah") return (portions.MA?.guru || 0) + (portions.MA?.siswa || 0);
-    if (schName === "MTS Assa'adah II") return (portions["MTS II"]?.guru || 0) + (portions["MTS II"]?.siswa || 0);
-    if (schName === "SMA Assa'adah") return (portions.SMA?.guru || 0) + (portions.SMA?.siswa || 0);
-    if (schName === "SMK Assa'adah") return (portions.SMK?.guru || 0) + (portions.SMK?.siswa || 0);
-    if (schName === "Desa Sukowati") return (portions.Sukowati?.besar || 0) + (portions.Sukowati?.kecil || 0);
-    if (schName === "Desa Sidokumpul") return (portions.Sidokumpul?.besar || 0) + (portions.Sidokumpul?.kecil || 0);
-    return 265;
-  };
+  // Hanya lokasi yang mempunyai PM pada tanggal ini yang perlu dibuatkan berkas.
+  const schools = getActiveDeliveryTargets(portions);
 
   const newDocsCreated: any[] = [];
   const nowTs = Date.now();
