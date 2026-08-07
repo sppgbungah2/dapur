@@ -379,7 +379,7 @@ export default function SOPChecklistView({
         </div>
 
         {/* Paper Header */}
-        <div className="flex items-center justify-start gap-4 border-b-2 border-black pb-5 mb-6">
+        <div className="flex items-center justify-between gap-4 border-b-2 border-black pb-5 mb-6">
           {/* Logo Yayasan */}
           <div className="h-16 w-16 sm:h-20 sm:w-20 shrink-0 bg-transparent flex items-center justify-center">
             <img 
@@ -391,14 +391,12 @@ export default function SOPChecklistView({
 
           <div className="flex-1 text-center md:text-left space-y-1">
             <h1 className="text-xs sm:text-sm md:text-base font-bold tracking-widest text-[#0c2448] uppercase leading-none">
-              STANDAR OPERASIONAL PROSEDUR
+              YAYASAN PONDOK PESANTREN QOMARUDDIN
             </h1>
             <h2 className="text-[10px] sm:text-xs md:text-sm font-bold tracking-wider text-neutral-800 uppercase leading-none mt-1">
-              SPPG GRESIK BUNGAH BUNGAH 2
+              DAPUR SPPG GRESIK BUNGAH BUNGAH 2
             </h2>
-            <h3 className="text-[9px] sm:text-xs font-semibold tracking-wide text-neutral-700 uppercase leading-snug mt-1">
-              YAYASAN PONDOK PESANTREN QOMARUDDIN
-            </h3>
+            <p className="text-[8px] sm:text-[9px] font-semibold text-neutral-700 leading-snug mt-1">Jl. Raya Bungah No.1, Desa Bungah, Kecamatan Bungah, Kabupaten Gresik, Jawa Timur | email: sppgbungah2@gmail.com</p>
             <div className="h-0.5 bg-black/80 w-full mt-1.5"></div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[10px] sm:text-[11px] font-semibold text-neutral-600 pt-1 font-mono uppercase gap-1">
               <span>DIVISI: {sop.division}</span>
@@ -406,6 +404,9 @@ export default function SOPChecklistView({
                 {getDivisionHeadingName(sop.division)}
               </span>
             </div>
+          </div>
+          <div className="h-16 w-16 sm:h-20 sm:w-20 shrink-0 bg-transparent flex items-center justify-center">
+            <img src="/logo%20sppg.png" alt="Logo SPPG" className="h-full w-full object-contain select-none" />
           </div>
         </div>
 

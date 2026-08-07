@@ -19,7 +19,7 @@ export const OfficialStamp: React.FC<OfficialStampProps> = ({
         ★ YAYASAN PP. QOMARUDDIN ★
       </div>
       <div className="text-[11px] font-black text-red-900 my-1 px-2.5 py-0.5 bg-red-100/90 rounded border border-red-700/80">
-        UNIT DAPUR SPPG BUNGAH 2
+        SPPG GRESIK BUNGAH BUNGAH 2
       </div>
       <div className="text-[9px] font-black text-red-800 tracking-wider flex items-center justify-center gap-1">
         <span className="text-emerald-700 text-xs">✓</span> {label}

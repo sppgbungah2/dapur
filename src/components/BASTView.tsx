@@ -549,7 +549,7 @@ export default function BASTView({
           )}
 
           {/* Document Header */}
-          <div className="flex items-center justify-start gap-4 border-b-4 border-double border-neutral-900 pb-4">
+          <div className="flex items-center justify-between gap-4 border-b-4 border-double border-neutral-900 pb-4">
             <img 
               src="/logo%20yayasan.png"
               alt="Logo Yayasan Qomaruddin"
@@ -560,12 +560,13 @@ export default function BASTView({
                 YAYASAN PONDOK PESANTREN QOMARUDDIN
               </h3>
               <h2 className="font-black text-neutral-900 text-lg md:text-xl tracking-wider uppercase font-display">
-                UNIT DAPUR SPPG BUNGAH 2
+                DAPUR SPPG GRESIK BUNGAH BUNGAH 2
               </h2>
               <p className="text-[9px] md:text-[10px] text-neutral-500 italic leading-tight">
-                Jl. Raya Bungah No.12, Bungah, Gresik, Jawa Timur — Telp: (031) 3949012
+                Jl. Raya Bungah No.1, Desa Bungah, Kecamatan Bungah, Kabupaten Gresik, Jawa Timur | email: sppgbungah2@gmail.com
               </p>
             </div>
+            <img src="/logo%20sppg.png" alt="Logo SPPG" className="h-16 w-16 md:h-20 md:w-20 object-contain select-none shrink-0" />
           </div>
 
           <div className="text-center my-6 space-y-1">
