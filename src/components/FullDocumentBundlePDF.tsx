@@ -2,6 +2,7 @@ import React from 'react';
 import { Printer, X, FileText, Download, CheckCircle2, ShieldCheck, Truck, Utensils, Award, Users } from 'lucide-react';
 import { DayMenu, SOPDocument } from '../types';
 import OfficialStamp from './OfficialStamp';
+import { PRIMARY_ASLAP_NAME } from '../utils/deliveryMaster';
 
 interface FullDocumentBundlePDFProps {
   selectedDate: string;
@@ -13,12 +14,11 @@ interface FullDocumentBundlePDFProps {
 
 const OfficialKopSurat = ({ title, docNo }: { title: string; docNo?: string }) => (
   <div className="space-y-2 border-b-4 border-double border-neutral-900 pb-4 mb-4">
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex items-center justify-start gap-4">
       <img 
-        src="https://www.bgn.go.id/logo-bgn.png" 
-        alt="Logo BGN" 
+        src="/logo%20yayasan.png"
+        alt="Logo Yayasan Qomaruddin"
         className="h-16 w-16 md:h-20 md:w-20 object-contain shrink-0" 
-        referrerPolicy="no-referrer"
       />
       <div className="text-center flex-1 space-y-1">
         <h3 className="font-extrabold text-neutral-950 text-xs md:text-sm tracking-wide uppercase">
@@ -31,15 +31,6 @@ const OfficialKopSurat = ({ title, docNo }: { title: string; docNo?: string }) =
           Jl. Raya Bungah No.12, Bungah, Gresik, Jawa Timur — Telp: (031) 3949012
         </p>
       </div>
-      <img 
-        src="https://qomaruddin.com/wp-content/uploads/2019/02/cropped-logo-qomaruddin-1-192x192.png" 
-        alt="Logo PP Qomaruddin" 
-        className="h-16 w-16 md:h-20 md:w-20 object-contain shrink-0 border border-neutral-100 p-0.5 rounded-full" 
-        referrerPolicy="no-referrer"
-        onError={(e) => {
-          e.currentTarget.src = "https://www.bgn.go.id/logo-bgn.png";
-        }}
-      />
     </div>
     <div className="text-center pt-2">
       <h1 className="font-black text-base md:text-lg text-neutral-950 tracking-wider underline uppercase">
@@ -53,6 +44,13 @@ const OfficialKopSurat = ({ title, docNo }: { title: string; docNo?: string }) =
     </div>
   </div>
 );
+
+const organoleptikCriteria = [
+  { key: 'rasa', label: 'Citarasa' },
+  { key: 'warna', label: 'Warna Alami' },
+  { key: 'aroma', label: 'Aroma Harum' },
+  { key: 'tekstur', label: 'Tekstur Matang' }
+];
 
 export default function FullDocumentBundlePDF({
   selectedDate,
@@ -186,7 +184,7 @@ export default function FullDocumentBundlePDF({
                 ) : (
                   <div className="h-14 border border-dashed border-neutral-300 rounded flex items-center justify-center text-[10px] text-neutral-400">Berttd Digital</div>
                 )}
-                <p className="font-bold border-t border-neutral-400 pt-1 mx-8">{doc.sjDriver || 'Ahmad Maghfur'}</p>
+                <p className="font-bold border-t border-neutral-400 pt-1 mx-8">{PRIMARY_ASLAP_NAME}</p>
               </div>
 
               <div className="space-y-12">
@@ -294,11 +292,11 @@ export default function FullDocumentBundlePDF({
               <div>
                 <p className="text-neutral-500 font-semibold">Lembaga / Tujuan:</p>
                 <p className="font-extrabold text-neutral-900">{doc.orlepDesa || doc.receiverName}</p>
-                <p className="text-neutral-600">Panelis / Ahli Gizi: <strong>{doc.orlepPanelis || 'Avianti Rahma Dianita'}</strong></p>
+                <p className="text-neutral-600">Panelis Organoleptik: <strong>{doc.orlepPanelis || 'Panelis Organoleptik'}</strong></p>
               </div>
               <div>
-                <p className="text-neutral-500 font-semibold">Suhu Sajian CCP:</p>
-                <p className="font-mono font-extrabold text-amber-700 text-sm">{doc.organoleptikSuhu || '68'} °C (Sangat Baik)</p>
+                <p className="text-neutral-500 font-semibold">Hari / Tanggal Uji:</p>
+                <p className="font-extrabold text-neutral-900">{doc.date}</p>
                 <p className="text-neutral-600">Jam Uji: <strong>{doc.orlepJam || '06:00 WIB'}</strong></p>
               </div>
             </div>
@@ -317,6 +315,39 @@ export default function FullDocumentBundlePDF({
               </p>
             </div>
 
+            <div className="space-y-2">
+              <p className="font-bold text-xs text-neutral-800">Tabel Penilaian Mutu Sensorik (Uji Panelis)</p>
+              <table className="w-full text-left text-xs border-collapse border border-neutral-300">
+                <thead>
+                  <tr className="bg-neutral-100 text-neutral-700 font-bold text-center">
+                    <th className="p-2 border-r border-neutral-300 text-left">Komponen Gizi Hidangan</th>
+                    {organoleptikCriteria.map(criterion => <th key={criterion.key} className="p-2 border-r border-neutral-300">{criterion.label}</th>)}
+                    <th className="p-2">Rata-Rata</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-200 text-center">
+                  {[
+                    ['MP', `Makanan Pokok (${dayMenu?.menuList?.[0] || 'Nasi Putih'})`],
+                    ['LH', `Lauk Hewani (${dayMenu?.menuList?.[1] || 'Lauk Protein'})`],
+                    ['LN', `Lauk Nabati (${dayMenu?.menuList?.[2] || 'Tahu/Tempe'})`],
+                    ['SY', `Sayur Hidangan (${dayMenu?.menuList?.[3] || 'Sayuran'})`],
+                    ['B', `Buah / Susu (${dayMenu?.menuList?.[4] || 'Buah/Susu'})`]
+                  ].map(([code, label]) => {
+                    const grid = doc.orlepGrid || {};
+                    const scores = organoleptikCriteria.map(criterion => Number(grid[`${code}_${criterion.key}`]) || 4);
+                    const average = (scores.reduce((total, score) => total + score, 0) / scores.length).toFixed(1);
+                    return (
+                      <tr key={code}>
+                        <td className="p-2 border-r border-neutral-300 font-bold text-neutral-800">{label}</td>
+                        {scores.map((score, scoreIndex) => <td key={organoleptikCriteria[scoreIndex].key} className="p-2 border-r border-neutral-300 font-mono">{score} / 5</td>)}
+                        <td className="p-2 font-black text-emerald-800 bg-emerald-50/40">{average}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
             {/* Signature */}
             <div className="text-right text-xs pt-6 relative">
               {(doc.status === 'Terkunci' || doc.status === 'Selesai') && (
@@ -325,13 +356,13 @@ export default function FullDocumentBundlePDF({
                 </div>
               )}
               <div className="inline-block text-center w-64 space-y-12">
-                <p className="font-bold text-neutral-700">Ahli Gizi / Tim QC:</p>
+                <p className="font-bold text-neutral-700">Penguji / Panelis Checker:</p>
                 {doc.orlepSignature ? (
                   <img src={doc.orlepSignature} alt="TTD QC" className="h-14 mx-auto object-contain" />
                 ) : (
                   <div className="h-14 border border-dashed border-neutral-300 rounded flex items-center justify-center text-[10px] text-neutral-400">Berttd Digital</div>
                 )}
-                <p className="font-bold border-t border-neutral-400 pt-1">{doc.orlepPanelis || 'Avianti Rahma Dianita'}</p>
+                <p className="font-bold border-t border-neutral-400 pt-1">{doc.orlepPanelis || 'Panelis Organoleptik'}</p>
               </div>
             </div>
           </div>

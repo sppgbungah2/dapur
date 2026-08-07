@@ -145,7 +145,7 @@ export async function generateInitialDocsAsync(
           receiverName: details.recipient,
           status: 'Aktif',
           orlepJam: details.time,
-          orlepPanelis: 'Avianti Rahma Dianita',
+          orlepPanelis: 'Panelis Organoleptik',
           orlepDesa: sch,
           orlepMenu: menuStr,
           orlepKritik: 'Suhu hangat terjaga prima, rasa gurih seimbang, hidangan segar layak konsumsi.',

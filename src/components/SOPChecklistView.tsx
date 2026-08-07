@@ -379,7 +379,7 @@ export default function SOPChecklistView({
         </div>
 
         {/* Paper Header */}
-        <div className="flex items-center justify-between gap-4 border-b-2 border-black pb-5 mb-6">
+        <div className="flex items-center justify-start gap-4 border-b-2 border-black pb-5 mb-6">
           {/* Logo Yayasan */}
           <div className="h-16 w-16 sm:h-20 sm:w-20 shrink-0 bg-transparent flex items-center justify-center">
             <img 
@@ -406,9 +406,6 @@ export default function SOPChecklistView({
                 {getDivisionHeadingName(sop.division)}
               </span>
             </div>
-          </div>
-          <div className="h-16 w-16 sm:h-20 sm:w-20 shrink-0 bg-transparent flex items-center justify-center">
-            <img src="/logo%20sppg.png" alt="Logo SPPG" className="h-full w-full object-contain select-none" />
           </div>
         </div>
 

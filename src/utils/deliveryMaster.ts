@@ -11,6 +11,9 @@ export const DELIVERY_TARGETS = [
   'Desa Gumeng'
 ] as const;
 
+/** Penanggung jawab Dapur untuk seluruh Surat Jalan. Bukan driver pengiriman. */
+export const PRIMARY_ASLAP_NAME = 'Ahmad Maghfur';
+
 type PortionEntry = { label: string; count: number };
 
 const DELIVERY_ASSIGNMENTS: Record<string, { driver: string; vehicleNumber: string }> = {

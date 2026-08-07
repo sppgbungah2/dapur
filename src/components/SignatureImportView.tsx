@@ -32,7 +32,7 @@ const dateValue = (value: unknown) => {
 };
 
 const SOP_PRIMARY_ROLE: Record<Division, string> = {
-  [Division.STOCKING]: 'Aslap',
+  [Division.STOCKING]: 'Chef',
   [Division.MASAK]: 'Chef',
   [Division.PEMORSIAN]: 'Ahli Gizi',
   [Division.DRIVER]: 'Aslap',
@@ -51,7 +51,7 @@ export default function SignatureImportView() {
     const rows = [
       ...Object.values(Division).flatMap(target => [SOP_PRIMARY_ROLE[target], 'Koordinator'].map(role => ({ Tanggal: 'MASTER_DEFAULT', Dokumen: 'SOP', 'Target / Divisi': target, Peran: role, Nama: '', 'URL TTD': '', Status: 'Master Default' }))),
       ...deliveryRows('BAST', ['Driver', 'Penerima']).map(row => ({ Tanggal: 'MASTER_DEFAULT', Dokumen: row.documentType, 'Target / Divisi': row.target, Peran: row.role, Nama: '', 'URL TTD': '', Status: 'Master Default' })),
-      ...deliveryRows('SURAT_JALAN', ['Aslap', 'Penerima']).map(row => ({ Tanggal: 'MASTER_DEFAULT', Dokumen: 'Surat Jalan', 'Target / Divisi': row.target, Peran: row.role, Nama: '', 'URL TTD': '', Status: 'Master Default' })),
+      ...deliveryRows('SURAT_JALAN', ['Aslap', 'Penerima']).map(row => ({ Tanggal: 'MASTER_DEFAULT', Dokumen: 'Surat Jalan', 'Target / Divisi': row.target, Peran: row.role, Nama: row.role === 'Aslap' ? 'Ahmad Maghfur' : '', 'URL TTD': '', Status: 'Master Default' })),
       ...deliveryRows('ORGANOLEPTIK', ['Panelis']).map(row => ({ Tanggal: 'MASTER_DEFAULT', Dokumen: 'Organoleptik', 'Target / Divisi': row.target, Peran: row.role, Nama: '', 'URL TTD': '', Status: 'Master Default' }))
     ];
     const sheet = XLSX.utils.json_to_sheet(rows);

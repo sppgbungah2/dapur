@@ -709,12 +709,11 @@ export default function SuratJalanView({
           )}
 
           {/* Document Header */}
-          <div className="flex items-center justify-between gap-4 border-b-4 border-double border-neutral-900 pb-4">
+          <div className="flex items-center justify-start gap-4 border-b-4 border-double border-neutral-900 pb-4">
             <img 
-              src="https://www.bgn.go.id/logo-bgn.png" 
-              alt="Logo BGN" 
+              src="/logo%20yayasan.png"
+              alt="Logo Yayasan Qomaruddin"
               className="h-16 w-16 md:h-20 md:w-20 object-contain select-none shrink-0" 
-              referrerPolicy="no-referrer"
             />
             <div className="text-center flex-1 space-y-1">
               <h3 className="font-extrabold text-neutral-950 text-xs md:text-sm tracking-wide uppercase">
@@ -727,16 +726,6 @@ export default function SuratJalanView({
                 Jl. Raya Bungah No.12, Bungah, Gresik, Jawa Timur — Telp: (031) 3949012
               </p>
             </div>
-            <img 
-              src="https://qomaruddin.com/wp-content/uploads/2019/02/cropped-logo-qomaruddin-1-192x192.png" 
-              alt="Logo PP Qomaruddin" 
-              className="h-16 w-16 md:h-20 md:w-20 object-contain select-none shrink-0 border border-neutral-100 p-0.5 rounded-full" 
-              referrerPolicy="no-referrer"
-              onError={(e) => {
-                // In case of any loading failure, fall back to a high quality alternative
-                e.currentTarget.src = "https://www.bgn.go.id/logo-bgn.png";
-              }}
-            />
           </div>
 
           <div className="text-center my-6 space-y-1">

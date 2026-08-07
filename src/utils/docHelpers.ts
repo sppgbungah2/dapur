@@ -147,7 +147,7 @@ export function createAllInitialShippingDocsForDate(
         receiverName: defaultPenerima,
         status: 'Aktif',
         orlepJam: defaultWaktu,
-        orlepPanelis: 'Avianti Rahma Dianita',
+        orlepPanelis: 'Panelis Organoleptik',
         orlepDesa: sch,
         orlepMenu: menuStr,
         orlepKritik: 'Suhu hangat terjaga prima, rasa gurih seimbang, hidangan segar layak konsumsi.',

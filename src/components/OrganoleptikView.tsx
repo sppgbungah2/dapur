@@ -168,7 +168,7 @@ export default function OrganoleptikView({
       receiverName: getRecipientName(recipient),
       status: 'Aktif',
       orlepJam: getDefaultReceiptTime(recipient),
-      orlepPanelis: loggedInUser?.fullName || 'Avianti Rahma Dianita',
+      orlepPanelis: 'Panelis Organoleptik',
       orlepDesa: recipient,
       orlepMenu: menuStr,
       orlepKritik: 'Suhu hangat terjaga prima, rasa gurih seimbang, melon segar layak konsumsi.',
@@ -318,8 +318,27 @@ export default function OrganoleptikView({
     return (sum / evaluationComponents.length).toFixed(2);
   };
 
+  // Retained for existing document data; the CCP temperature field is no longer shown in this form.
   const currentSuhu = parseFloat(activeDoc?.organoleptikSuhu || activeDoc?.orlepSuhu || '68') || 68;
   const isCriticalTempViolated = currentSuhu < 60;
+
+  const renderScoreControl = (componentCode: string, criterion: string, score: number) => (
+    <input
+      type="number"
+      min="1"
+      max="5"
+      step="1"
+      value={score}
+      aria-label={`Nilai ${criterion} ${componentCode}`}
+      onChange={(e) => {
+        const nextScore = Number(e.target.value);
+        if (Number.isInteger(nextScore) && nextScore >= 1 && nextScore <= 5) {
+          handleGridRatingChange(`${componentCode}_${criterion}`, nextScore);
+        }
+      }}
+      className="w-16 bg-white border border-neutral-300 rounded-lg px-2 py-1.5 text-center text-xs font-bold text-neutral-800 focus:outline-emerald-500"
+    />
+  );
 
   // If viewing a document in full-depth
   if (activeDoc) {
@@ -393,7 +412,7 @@ export default function OrganoleptikView({
           )}
 
           {/* Document Header */}
-          <div className="flex items-center justify-between gap-4 border-b-4 border-double border-neutral-900 pb-4">
+          <div className="flex items-center justify-start gap-4 border-b-4 border-double border-neutral-900 pb-4">
             <img 
               src="/logo%20yayasan.png"
               alt="Logo Yayasan Qomaruddin"
@@ -410,11 +429,6 @@ export default function OrganoleptikView({
                 Jl. Raya Bungah No.12, Bungah, Gresik, Jawa Timur — Telp: (031) 3949012
               </p>
             </div>
-            <img 
-              src="/logo%20sppg.png"
-              alt="Logo SPPG"
-              className="h-16 w-16 md:h-20 md:w-20 object-contain select-none shrink-0 border border-neutral-100 p-0.5 rounded-full" 
-            />
           </div>
 
           <div className="text-center my-6 space-y-1">
@@ -491,7 +505,7 @@ export default function OrganoleptikView({
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="hidden">
                 <span className="text-[10px] font-bold text-neutral-450 uppercase w-36 shrink-0">Suhu CCP Hidangan:</span>
                 {isLocked ? (
                   <span className={`text-xs font-mono font-black px-2 py-0.5 rounded border ${isCriticalTempViolated ? 'bg-red-50 border-red-200 text-red-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
@@ -515,7 +529,7 @@ export default function OrganoleptikView({
           </div>
 
           {/* CCP Warning Alert if applicable */}
-          {isCriticalTempViolated && (
+          {false && (
             <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-2xl text-xs font-semibold flex items-center gap-3 mb-6 animate-pulse">
               <ShieldAlert className="h-6 w-6 text-red-600 shrink-0" />
               <div>
@@ -543,21 +557,21 @@ export default function OrganoleptikView({
           </div>
 
           {/* Interactive Evaluation Table */}
-          <div className="space-y-2 mb-6">
-            <span className="text-[10px] font-bold text-neutral-450 uppercase block">Tabel Penilaian Mutu Sensorik (Uji Panelis):</span>
-            <div className="border border-neutral-950 overflow-x-auto rounded-xl">
-              <table className="min-w-[700px] w-full text-left text-xs border-collapse">
+          <div className="space-y-3 mb-6">
+            <span className="text-[10px] font-bold text-neutral-450 uppercase block">Tabel Penilaian Mutu Sensorik (Uji Panelis)</span>
+            <div className="border border-neutral-300 overflow-x-auto rounded-xl shadow-3xs">
+              <table className="min-w-[620px] w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-neutral-100 border-b border-neutral-950 text-[10px] font-bold text-center">
-                    <th className="p-3 border-r border-neutral-950 text-left">Komponen Gizi Hidangan</th>
-                    <th className="p-3 border-r border-neutral-950 w-44">Citarasa</th>
-                    <th className="p-3 border-r border-neutral-950 w-44">Warna Alami</th>
-                    <th className="p-3 border-r border-neutral-950 w-44">Aroma Harum</th>
-                    <th className="p-3 border-r border-neutral-950 w-44">Tekstur Matang</th>
+                  <tr className="bg-neutral-100 border-b border-neutral-300 text-[10px] font-bold text-center text-neutral-700">
+                    <th className="p-3 border-r border-neutral-300 text-left">Komponen Gizi Hidangan</th>
+                    <th className="p-3 border-r border-neutral-300 w-24">Citarasa</th>
+                    <th className="p-3 border-r border-neutral-300 w-24">Warna Alami</th>
+                    <th className="p-3 border-r border-neutral-300 w-24">Aroma Harum</th>
+                    <th className="p-3 border-r border-neutral-300 w-24">Tekstur Matang</th>
                     <th className="p-3">Rata-Rata</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-950 text-center font-bold text-neutral-850">
+                <tbody className="divide-y divide-neutral-200 text-center font-bold text-neutral-850">
                   {evaluationComponents.map(comp => {
                     const grid = activeDoc.orlepGrid || {};
                     const rasa = grid[`${comp.code}_rasa`] || 4;
@@ -567,98 +581,42 @@ export default function OrganoleptikView({
                     const rowAvg = getComponentAverage(comp.code);
                     
                     return (
-                      <tr key={comp.code}>
-                        <td className="p-3 border-r border-neutral-950 text-left font-black text-neutral-800">{comp.name}</td>
+                      <tr key={comp.code} className="hover:bg-neutral-50/70">
+                        <td className="p-3 border-r border-neutral-200 text-left font-black text-neutral-800">{comp.name}</td>
                         
                         {/* Rasa cell */}
-                        <td className="p-2 border-r border-neutral-950">
+                        <td className="p-2 border-r border-neutral-200">
                           {isLocked ? (
                             <span className="font-mono text-neutral-600">{rasa} / 5</span>
                           ) : (
-                            <div className="flex items-center justify-center gap-1.5">
-                              {[1, 2, 3, 4, 5].map(star => (
-                                <button
-                                  key={star}
-                                  onClick={() => handleGridRatingChange(`${comp.code}_rasa`, star)}
-                                  className={`w-8 h-8 md:w-6 md:h-6 rounded-full flex items-center justify-center text-xs md:text-[10px] font-bold transition-all cursor-pointer ${
-                                    rasa === star 
-                                      ? 'bg-emerald-700 text-white shadow-xs scale-110' 
-                                      : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-500'
-                                  }`}
-                                >
-                                  {star}
-                                </button>
-                              ))}
-                            </div>
+                            renderScoreControl(comp.code, 'rasa', rasa)
                           )}
                         </td>
 
                         {/* Warna cell */}
-                        <td className="p-2 border-r border-neutral-950">
+                        <td className="p-2 border-r border-neutral-200">
                           {isLocked ? (
                             <span className="font-mono text-neutral-600">{warna} / 5</span>
                           ) : (
-                            <div className="flex items-center justify-center gap-1.5">
-                              {[1, 2, 3, 4, 5].map(star => (
-                                <button
-                                  key={star}
-                                  onClick={() => handleGridRatingChange(`${comp.code}_warna`, star)}
-                                  className={`w-8 h-8 md:w-6 md:h-6 rounded-full flex items-center justify-center text-xs md:text-[10px] font-bold transition-all cursor-pointer ${
-                                    warna === star 
-                                      ? 'bg-emerald-700 text-white shadow-xs scale-110' 
-                                      : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-500'
-                                  }`}
-                                >
-                                  {star}
-                                </button>
-                              ))}
-                            </div>
+                            renderScoreControl(comp.code, 'warna', warna)
                           )}
                         </td>
 
                         {/* Aroma cell */}
-                        <td className="p-2 border-r border-neutral-950">
+                        <td className="p-2 border-r border-neutral-200">
                           {isLocked ? (
                             <span className="font-mono text-neutral-600">{aroma} / 5</span>
                           ) : (
-                            <div className="flex items-center justify-center gap-1.5">
-                              {[1, 2, 3, 4, 5].map(star => (
-                                <button
-                                  key={star}
-                                  onClick={() => handleGridRatingChange(`${comp.code}_aroma`, star)}
-                                  className={`w-8 h-8 md:w-6 md:h-6 rounded-full flex items-center justify-center text-xs md:text-[10px] font-bold transition-all cursor-pointer ${
-                                    aroma === star 
-                                      ? 'bg-emerald-700 text-white shadow-xs scale-110' 
-                                      : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-500'
-                                  }`}
-                                >
-                                  {star}
-                                </button>
-                              ))}
-                            </div>
+                            renderScoreControl(comp.code, 'aroma', aroma)
                           )}
                         </td>
 
                         {/* Tekstur cell */}
-                        <td className="p-2 border-r border-neutral-950">
+                        <td className="p-2 border-r border-neutral-200">
                           {isLocked ? (
                             <span className="font-mono text-neutral-600">{tekstur} / 5</span>
                           ) : (
-                            <div className="flex items-center justify-center gap-1.5">
-                              {[1, 2, 3, 4, 5].map(star => (
-                                <button
-                                  key={star}
-                                  onClick={() => handleGridRatingChange(`${comp.code}_tekstur`, star)}
-                                  className={`w-8 h-8 md:w-6 md:h-6 rounded-full flex items-center justify-center text-xs md:text-[10px] font-bold transition-all cursor-pointer ${
-                                    tekstur === star 
-                                      ? 'bg-emerald-700 text-white shadow-xs scale-110' 
-                                      : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-500'
-                                  }`}
-                                >
-                                  {star}
-                                </button>
-                              ))}
-                            </div>
+                            renderScoreControl(comp.code, 'tekstur', tekstur)
                           )}
                         </td>
 
@@ -668,8 +626,8 @@ export default function OrganoleptikView({
                   })}
                   
                   {/* Overall score row */}
-                  <tr className="bg-neutral-50 font-black border-t-2 border-neutral-950 text-neutral-950 text-center">
-                    <td className="p-3 border-r border-neutral-950 text-left font-extrabold uppercase" colSpan={5}>SKOR INDEX ORGANOLEPTIK HARIAN</td>
+                  <tr className="bg-neutral-50 font-black border-t-2 border-neutral-300 text-neutral-950 text-center">
+                    <td className="p-3 border-r border-neutral-300 text-left font-extrabold uppercase" colSpan={5}>SKOR INDEX ORGANOLEPTIK HARIAN</td>
                     <td className="p-3 font-mono text-base text-emerald-900 bg-emerald-100/40">{getOverallAverage()} / 5.00</td>
                   </tr>
                 </tbody>
@@ -1165,7 +1123,7 @@ export default function OrganoleptikView({
                             </span>
                             <span className="text-[9px] text-neutral-400 font-mono block uppercase tracking-wider">PANELIS PENGUJI</span>
                             <h4 className="font-bold text-sm text-neutral-800 group-hover:text-emerald-800 transition-colors">
-                              {doc.orlepPanelis || 'Avianti Rahma Dianita'}
+                              {doc.orlepPanelis || 'Panelis Organoleptik'}
                             </h4>
                           </div>
                           

@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured, asOperationalDate } from './supabase';
 import { fetchPortionsForDate, generateInitialDocsAsync } from '../utils/generateDocs';
-import { getActiveDeliveryTargets } from '../utils/deliveryMaster';
+import { getActiveDeliveryTargets, PRIMARY_ASLAP_NAME } from '../utils/deliveryMaster';
 import { generateInitialSOPsForDate, getCanonicalSopId, getSopTaskTableName } from '../presetData';
 import type { SignatureRecord } from '../components/SignatureImportView';
 
@@ -110,17 +110,8 @@ export async function autoSignOperationalDocuments(dateInput: string) {
     const matchingRole = records.filter(record => canonical(record.documentType) === canonical(documentType) && canonical(record.role) === canonical(role));
     const direct = matchingRole.find(record => canonical(record.target) === canonical(target))
       // A single Aslap/Driver may be legitimately assigned to every location.
-      || matchingRole.find(record => ['semualokasi', 'all', 'umum', 'global'].includes(canonical(record.target)))
-      || ((role === 'Aslap' || role === 'Driver') && matchingRole.length ? matchingRole[0] : undefined);
+      || matchingRole.find(record => ['semualokasi', 'all', 'umum', 'global'].includes(canonical(record.target)));
     if (direct) return direct;
-    // In this operational structure, the Aslap signs SOP Driver/Cuci/Kebersihan/Keamanan.
-    // Reuse that imported URL for Surat Jalan when the user maintains one shared Aslap signature.
-    if (documentType === 'SURAT_JALAN' && role === 'Aslap') {
-      return records.find(record =>
-        canonical(record.documentType) === 'sop' && canonical(record.role) === canonical('Aslap') &&
-        ['driver', 'cuci', 'kebersihan', 'keamanan'].includes(canonical(record.target))
-      );
-    }
     return undefined;
   };
   let sjResult: any; let bastResult: any; let orlepResult: any; let sopResult: any;
@@ -145,6 +136,7 @@ export async function autoSignOperationalDocuments(dateInput: string) {
   for (const doc of sjResult.data || []) {
     const aslap = lookup('SURAT_JALAN', doc.sj_kepada, 'Aslap'); const receiver = lookup('SURAT_JALAN', doc.sj_kepada, 'Penerima');
     if (!aslap || !receiver) throw new Error(`TTD Surat Jalan belum lengkap untuk ${doc.sj_kepada}: ${!aslap ? 'Aslap' : 'Penerima'} belum ditemukan.`);
+    if (canonical(aslap.name) !== canonical(PRIMARY_ASLAP_NAME)) throw new Error(`Master TTD Surat Jalan untuk ${doc.sj_kepada} harus memakai peran Aslap atas nama ${PRIMARY_ASLAP_NAME}.`);
     updates.push(db.from('surat_jalan_docs').update({ sj_signature_aslap: aslap.signatureUrl, sj_signature_receiver: receiver.signatureUrl, status: 'Terkunci', is_locked: true }).eq('id', doc.id));
   }
   for (const doc of bastResult.data || []) {
@@ -155,11 +147,15 @@ export async function autoSignOperationalDocuments(dateInput: string) {
   for (const doc of orlepResult.data || []) {
     const panelist = lookup('ORGANOLEPTIK', doc.orlep_desa, 'Panelis');
     if (!panelist) throw new Error(`TTD Organoleptik belum lengkap untuk ${doc.orlep_desa}.`);
-    updates.push(db.from('organoleptik_docs').update({ orlep_signature: panelist.signatureUrl, status: 'Terkunci', is_locked: true }).eq('id', doc.id));
+    updates.push(db.from('organoleptik_docs').update({ orlep_panelis: panelist.name, orlep_signature: panelist.signatureUrl, status: 'Terkunci', is_locked: true }).eq('id', doc.id));
   }
   for (const doc of sopResult.data || []) {
     const normalizedDivision = canonical(doc.division);
-    const ownerRole = normalizedDivision === canonical('Masak') ? 'Chef' : normalizedDivision === canonical('Pemorsian') ? 'Ahli Gizi' : 'Aslap';
+    const ownerRole = [canonical('Stocking (Persiapan)'), canonical('Masak')].includes(normalizedDivision)
+      ? 'Chef'
+      : normalizedDivision === canonical('Pemorsian')
+        ? 'Ahli Gizi'
+        : 'Aslap';
     const owner = lookup('SOP', doc.division, ownerRole);
     const coordinator = lookup('SOP', doc.division, 'Koordinator');
     if (!owner || !coordinator) throw new Error(`Dua TTD SOP belum lengkap untuk divisi ${doc.division}.`);
