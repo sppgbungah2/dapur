@@ -30,6 +30,7 @@ interface DashboardAdminViewProps {
   setKeluhanList: React.Dispatch<React.SetStateAction<VolunteerComplaintItem[]>>;
   onSaveSopsToCloud?: (date?: string) => Promise<{ success: boolean; message: string }>;
   onSelectDate?: (date: string) => void;
+  onDailyDataDeleted?: (date: string) => void;
   boronganMode?: boolean;
 }
 
@@ -49,6 +50,7 @@ export default function DashboardAdminView({
   setKeluhanList,
   onSaveSopsToCloud,
   onSelectDate,
+  onDailyDataDeleted,
   boronganMode = false
 }: DashboardAdminViewProps) {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -170,6 +172,74 @@ export default function DashboardAdminView({
       await fetchMonthlyData(currentMonth);
     } catch (err) {
       setLockMessage(`Gagal menerbitkan berkas: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const handleDeleteDailyData = async (date: string) => {
+    if (!isSupabaseConfigured || !supabase) {
+      setLockMessage('Supabase belum dikonfigurasi, sehingga data tidak dapat dihapus.');
+      return;
+    }
+    if (!confirm(`Hapus seluruh data operasional tanggal ${date} dari Supabase? Menu, porsi, dokumen, SOP, dan task hari tersebut akan hilang dan tidak dapat dikembalikan.`)) return;
+
+    setProcessingDate(date);
+    setLockMessage(`Menghapus seluruh data ${date} dari Supabase...`);
+    try {
+      const { data: sopRows, error: sopReadError } = await supabase.from('sops').select('id').eq('date', date);
+      if (sopReadError) throw sopReadError;
+
+      const isMissingTable = (error: unknown) => {
+        const code = (error as { code?: string } | null)?.code;
+        return code === '42P01' || code === 'PGRST205';
+      };
+
+      const sopIds = (sopRows || []).map((sop: { id: string }) => sop.id);
+      const sopTaskTables = [
+        'sop_tasks',
+        'sop_tasks_driver',
+        'sop_tasks_stocking',
+        'sop_tasks_masak',
+        'sop_tasks_pemorsian',
+        'sop_tasks_kebersihan',
+        'sop_tasks_cuci',
+        'sop_tasks_keamanan'
+      ];
+
+      if (sopIds.length) {
+        const taskResults = await Promise.all(sopTaskTables.map(table => supabase.from(table).delete().in('sop_id', sopIds)));
+        // Beberapa instalasi lama tidak mempunyai seluruh tabel task. Tabel yang
+        // tidak ada tidak boleh membatalkan penghapusan data tanggal ini.
+        const taskError = taskResults.find(result => result.error && !isMissingTable(result.error))?.error;
+        if (taskError) throw taskError;
+      }
+
+      const tables = [
+        'surat_jalan_docs', 'bast_docs', 'organoleptik_docs', 'shipping_docs',
+        'sops', 'master_porsi', 'day_menus', 'sisa_stok',
+        'volunteer_complaints', 'kedatangan_barang', 'absensi_logs', 'absensi_signoffs'
+      ];
+      const deleteResults = await Promise.all(tables.map(async table => ({
+        table,
+        result: await supabase.from(table).delete().eq('date', date)
+      })));
+      const deleteFailure = deleteResults.find(({ result }) => result.error && !isMissingTable(result.error));
+      const deleteError = deleteFailure?.result.error;
+      if (deleteError) throw deleteError;
+
+      onDailyDataDeleted?.(date);
+      setSelectedBundleDate(current => current === date ? null : current);
+      setLockMessage(`Seluruh data operasional ${date} berhasil dihapus dari Supabase.`);
+      await fetchMonthlyData(currentMonth);
+    } catch (err) {
+      const detail = err && typeof err === 'object'
+        ? (() => {
+            const dbError = err as { message?: string; details?: string; hint?: string; code?: string };
+            return [dbError.message, dbError.details, dbError.hint, dbError.code ? `kode ${dbError.code}` : ''].filter(Boolean).join(' — ') || 'Respons error tidak dikenal dari Supabase.';
+          })()
+        : String(err);
+      setLockMessage(`Gagal menghapus data ${date}: ${detail}`);
+    } finally {
+      setProcessingDate(null);
     }
   };
 
@@ -457,7 +527,7 @@ if (isSupabaseConfigured && supabase) {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[800px]">
+          <table className="w-full text-left border-collapse min-w-[900px]">
             <thead>
               <tr className="bg-neutral-50 text-[10px] uppercase tracking-wider text-neutral-500">
                 <th className="px-4 py-3 border-b border-neutral-200 font-bold whitespace-nowrap">Tanggal</th>
@@ -468,19 +538,20 @@ if (isSupabaseConfigured && supabase) {
                 <th className="px-4 py-3 border-b border-neutral-200 font-bold">Organoleptik</th>
                 <th className="px-4 py-3 border-b border-neutral-200 font-bold">SOP</th>
                 <th className="px-4 py-3 border-b border-neutral-200 font-bold">{boronganMode ? 'Aksi Borongan' : 'Rekap Dokumen'}</th>
+                {!boronganMode && <th className="px-4 py-3 border-b border-neutral-200 font-bold">Hapus Data</th>}
               </tr>
             </thead>
             <tbody className="text-xs divide-y divide-neutral-100">
               {loadingMonth ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-neutral-500">
+                  <td colSpan={boronganMode ? 8 : 9} className="text-center py-12 text-neutral-500">
                     <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2 text-emerald-600" />
                     Memuat data...
                   </td>
                 </tr>
               ) : Object.keys(monthlyData).length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-neutral-500">
+                  <td colSpan={boronganMode ? 8 : 9} className="text-center py-12 text-neutral-500">
                     Tidak ada data untuk bulan ini.
                   </td>
                 </tr>
@@ -519,6 +590,18 @@ if (isSupabaseConfigured && supabase) {
                           <span>{processingDate === date ? 'Menyinkronkan...' : boronganMode ? (data.lifecycleStatus === 'Belum Diinisiasi' ? 'Inisiasi Masal' : data.isAutoSigned ? 'Lengkap & Terbit' : !data.hasAllDocuments ? 'Lengkapi Dokumen' : data.isComplete ? 'Paraf Otomatis' : data.lifecycleStatus) : data.lifecycleStatus}</span>
                         </button>
                       </td>
+                      {!boronganMode && <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteDailyData(date)}
+                          disabled={processingDate === date}
+                          className={`rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 transition-colors hover:bg-red-100 ${processingDate === date ? 'cursor-wait opacity-60' : 'cursor-pointer'}`}
+                          title={`Hapus seluruh data tanggal ${date} dari Supabase`}
+                        >
+                          <Trash2 className="mr-1 inline h-3.5 w-3.5" />
+                          Hapus Data
+                        </button>
+                      </td>}
                     </tr>
                   );
                 })

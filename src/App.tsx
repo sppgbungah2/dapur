@@ -974,6 +974,10 @@ export default function App() {
               setSops={setSops}
               onGoToTab={setActiveTab}
               onSaveSopsToCloud={handleSaveSopsToCloud}
+              onClearDailyData={(date) => {
+                setDayMenus(prev => prev.filter(menu => menu.date !== date));
+                setSops(prev => prev.filter(sop => sop.date !== date));
+              }}
             />
           ) : (
             <>

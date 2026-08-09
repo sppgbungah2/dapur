@@ -71,6 +71,7 @@ interface MockModulesProps {
   setSops?: any;
   onGoToTab?: (tabNum: number) => void;
   onSaveSopsToCloud?: (date?: string) => Promise<{ success: boolean; message: string }>;
+  onClearDailyData?: (date: string) => void;
 }
 
 const DISTRIBUTION_LOCATIONS = [
@@ -2040,7 +2041,8 @@ export default function MockModules({
   sops = [],
   setSops,
   onGoToTab,
-  onSaveSopsToCloud
+  onSaveSopsToCloud,
+  onClearDailyData
 }: MockModulesProps) {
   // Common states
   const [searchTerm, setSearchTerm] = useState('');
@@ -5411,6 +5413,17 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
           setKeluhanList={setKeluhanList}
           onSaveSopsToCloud={onSaveSopsToCloud}
           onSelectDate={onSelectDate}
+          onDailyDataDeleted={(date) => {
+            setRawShippingDocs(prev => prev.filter(doc => doc.date !== date));
+            setOrderRequests(prev => prev.filter(item => !item.created_at?.startsWith(date)));
+            setKeluhanList(prev => prev.filter(item => !item.created_at?.startsWith(date)));
+            setRawKedatanganMap(prev => {
+              const next = { ...prev };
+              delete next[date];
+              return next;
+            });
+            onClearDailyData?.(date);
+          }}
         />
       );
     }
