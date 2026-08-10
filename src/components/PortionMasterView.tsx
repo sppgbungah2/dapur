@@ -59,17 +59,39 @@ const getCell = (row: Record<string, unknown>, aliases: string[]) => {
 };
 
 const parseImportDate = (value: unknown): string | null => {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  const asCalendarDate = (year: number, month: number, day: number): string | null => {
+    const check = new Date(Date.UTC(year, month - 1, day));
+    if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return null;
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  };
+  // XLSX dengan `cellDates` menghasilkan Date di tengah malam lokal. Memakai
+  // toISOString() akan mengonversinya ke UTC dan dapat menggeser tanggal satu hari.
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return asCalendarDate(value.getFullYear(), value.getMonth() + 1, value.getDate());
+  }
   if (typeof value === 'number' && value > 20000 && value < 80000) {
     const parsed = XLSX.SSF.parse_date_code(value);
-    if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
+    if (parsed) return asCalendarDate(parsed.y, parsed.m, parsed.d);
   }
   const raw = String(value ?? '').trim();
   if (!raw) return null;
   const iso = raw.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
-  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
-  const indonesian = raw.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
-  if (indonesian) return `${indonesian[3]}-${indonesian[2].padStart(2, '0')}-${indonesian[1].padStart(2, '0')}`;
+  if (iso) return asCalendarDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+  const localized = raw.match(/^(\d{1,2})([-/.])(\d{1,2})\2(\d{4})$/);
+  if (localized) {
+    const first = Number(localized[1]);
+    const separator = localized[2];
+    const second = Number(localized[3]);
+    const year = Number(localized[4]);
+    // Excel yang menampilkan garis miring umumnya memakai MM/DD/YYYY.
+    // Untuk format dengan tanda minus/titik, gunakan DD-MM-YYYY Indonesia.
+    if (separator === '/' && second > 12) return asCalendarDate(year, first, second);
+    if (first > 12) return asCalendarDate(year, second, first);
+    if (second > 12) return asCalendarDate(year, first, second);
+    // Tanggal seperti 07/08/2026 ambigu. Tolak agar tidak tersimpan pada hari
+    // yang salah; gunakan YYYY-MM-DD, atau MM/DD/YYYY bila memakai garis miring.
+    return null;
+  }
   return null;
 };
 
@@ -228,7 +250,7 @@ export default function PortionMasterView({
   const downloadImportTemplate = () => {
     const worksheet = XLSX.utils.json_to_sheet([
       {
-        Tanggal: '2025-11-01',
+        Tanggal: selectedDate,
         Menu: 'Nasi Putih, Ayam Bumbu, Sayur, Buah',
         'MA Siswa': 0, 'MA Guru': 0, 'MTS II Siswa': 0, 'MTS II Guru': 0,
         'SMK Siswa': 0, 'SMK Guru': 0, 'SMA Siswa': 0, 'SMA Guru': 0,
@@ -306,7 +328,9 @@ export default function PortionMasterView({
     setIsImporting(true);
     setMessage(null);
     try {
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+      // Biarkan tanggal Excel menjadi nomor serial agar tanggal kalender tidak
+      // melewati konversi timezone JavaScript.
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: false });
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
       if (!firstSheet) throw new Error('Berkas tidak memiliki lembar kerja.');
       const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: '' });
@@ -339,7 +363,7 @@ export default function PortionMasterView({
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="flex items-center gap-2 text-lg font-black text-sky-950"><FileSpreadsheet className="h-5 w-5 text-sky-600" /> Impor Masal Menu & PM</h2>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-sky-800">Satu baris untuk satu tanggal. Berkas ini hanya untuk menu harian dan jumlah Penerima Manfaat (PM).</p>
+            <p className="mt-1 max-w-3xl text-xs leading-5 text-sky-800">Satu baris untuk satu tanggal. Gunakan format <strong>YYYY-MM-DD</strong>; format Excel <strong>MM/DD/YYYY</strong> seperti 7/14/2026 juga didukung.</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={downloadImportTemplate} className="inline-flex items-center gap-2 rounded-xl border border-sky-300 bg-white px-3 py-2 text-xs font-bold text-sky-800"><Download className="h-4 w-4" /> Unduh Template</button>

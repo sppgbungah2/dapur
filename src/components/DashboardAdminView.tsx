@@ -243,6 +243,67 @@ export default function DashboardAdminView({
     }
   };
 
+  const handleDeleteCurrentMonth = async () => {
+    if (!isSupabaseConfigured || !supabase) return setLockMessage('Supabase belum dikonfigurasi, sehingga data tidak dapat dihapus.');
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const startDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    const endDate = `${year}-${String(month + 2).padStart(2, '0')}-01`;
+    const monthLabel = currentMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' });
+    if (!confirm(`Hapus SELURUH data operasional bulan ${monthLabel} dari Supabase? Menu, PM, dokumen, SOP, stok, absensi, keluhan, dan order pada bulan ini tidak dapat dikembalikan.`)) return;
+
+    const isMissingTable = (error: unknown) => {
+      const code = (error as { code?: string } | null)?.code;
+      return code === '42P01' || code === 'PGRST205';
+    };
+    setProcessingDate(`month:${startDate}`);
+    setLockMessage(`Menghapus seluruh data ${monthLabel} dari Supabase...`);
+    try {
+      const { data: sopRows, error: sopReadError } = await supabase.from('sops').select('id').gte('date', startDate).lt('date', endDate);
+      if (sopReadError) throw sopReadError;
+      const sopIds = (sopRows || []).map((sop: { id: string }) => sop.id);
+      const sopTaskTables = ['sop_tasks', 'sop_tasks_driver', 'sop_tasks_stocking', 'sop_tasks_masak', 'sop_tasks_pemorsian', 'sop_tasks_kebersihan', 'sop_tasks_cuci', 'sop_tasks_keamanan'];
+      if (sopIds.length) {
+        const taskResults = await Promise.all(sopTaskTables.map(table => supabase.from(table).delete().in('sop_id', sopIds)));
+        const taskError = taskResults.find(result => result.error && !isMissingTable(result.error))?.error;
+        if (taskError) throw taskError;
+      }
+      const dateTables = ['surat_jalan_docs', 'bast_docs', 'organoleptik_docs', 'shipping_docs', 'sops', 'master_porsi', 'day_menus', 'sisa_stok', 'volunteer_complaints', 'kedatangan_barang', 'absensi_logs', 'absensi_signoffs'];
+      const results = await Promise.all(dateTables.map(table => supabase.from(table).delete().gte('date', startDate).lt('date', endDate)));
+      const deleteError = results.find(result => result.error && !isMissingTable(result.error))?.error;
+      if (deleteError) throw deleteError;
+      // order_requests memakai created_at, bukan kolom date.
+      const { error: orderError } = await supabase.from('order_requests').delete()
+        .gte('created_at', `${startDate}T00:00:00+07:00`).lt('created_at', `${endDate}T00:00:00+07:00`);
+      if (orderError && !isMissingTable(orderError)) throw orderError;
+
+      // Bersihkan cache aplikasi untuk tiap hari agar tampilan langsung sama
+      // dengan Supabase, termasuk modul yang menyimpan data per tanggal.
+      const periodStart = new Date(`${startDate}T00:00:00+07:00`).getTime();
+      const periodEnd = new Date(`${endDate}T00:00:00+07:00`).getTime();
+      const isTimestampInPeriod = (value?: string) => {
+        const timestamp = value ? new Date(value).getTime() : Number.NaN;
+        return Number.isFinite(timestamp) && timestamp >= periodStart && timestamp < periodEnd;
+      };
+      setShippingDocs(prev => prev.filter(doc => doc.date < startDate || doc.date >= endDate));
+      setOrderRequests(prev => prev.filter(item => !isTimestampInPeriod(item.created_at)));
+      setKeluhanList(prev => prev.filter(item => !isTimestampInPeriod(item.created_at)));
+      for (let cursor = new Date(Date.UTC(year, month, 1)); cursor.getUTCMonth() === month; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+        const date = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}-${String(cursor.getUTCDate()).padStart(2, '0')}`;
+        onDailyDataDeleted?.(date);
+      }
+      setSelectedBundleDate(null);
+      setMonthlyData({});
+      setLockMessage(`Seluruh data operasional ${monthLabel} berhasil dihapus dan dashboard telah disinkronkan.`);
+      await fetchMonthlyData(currentMonth);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setLockMessage(`Gagal menghapus data ${monthLabel}: ${detail}`);
+    } finally {
+      setProcessingDate(null);
+    }
+  };
+
   const fetchMonthlyData = async (date: Date) => {
     setLoadingMonth(true);
     try {
@@ -494,6 +555,20 @@ if (isSupabaseConfigured && supabase) {
             onSaveMenu={onSaveMenu!} 
             onSavePortions={(p) => { setPortions(p); }}
           />
+          <div className="flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-extrabold text-rose-900"><Trash2 className="h-4 w-4" /> Hapus Data Per Bulan</h3>
+              <p className="mt-1 text-xs text-rose-800">Menghapus seluruh data bulan {currentMonth.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })} dari Supabase dan menyegarkan data aplikasi.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleDeleteCurrentMonth()}
+              disabled={processingDate === `month:${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-01`}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-rose-700 disabled:cursor-wait disabled:opacity-60"
+            >
+              {processingDate?.startsWith('month:') ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Hapus Bulan Ini
+            </button>
+          </div>
         </div>
       )}
 
