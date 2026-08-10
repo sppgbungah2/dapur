@@ -11,7 +11,7 @@ import { getRecipientName, getDefaultReceiptTime } from '../presetData';
 import SignaturePad from './SignaturePad';
 import OfficialStamp from './OfficialStamp';
 import DocumentDatePicker from './DocumentDatePicker';
-import { DELIVERY_TARGETS, buildSuratJalanRows, getDeliveryDetails } from '../utils/deliveryMaster';
+import { DELIVERY_TARGETS, buildSuratJalanRows, getConsumptionDeadline, getDeliveryDetails } from '../utils/deliveryMaster';
 import { fetchPortionsForDate } from '../utils/generateDocs';
 
 interface SuratJalanViewProps {
@@ -137,6 +137,7 @@ export default function SuratJalanView({
         receiverName: details.recipient || activeDoc.receiverName,
         sjDriver: details.driver || activeDoc.sjDriver,
         sjWaktu: details.time || activeDoc.sjWaktu,
+        sjBatasKonsumsi: details.consumptionDeadline || activeDoc.sjBatasKonsumsi,
         sjRows: buildSuratJalanRows(activeDoc.sjKepada, portions)
       };
       if (JSON.stringify(updated) !== JSON.stringify(activeDoc)) {
@@ -179,7 +180,7 @@ export default function SuratJalanView({
       if (!alive || error || !data?.length) return;
       const hydrated = data.map((d: any) => ({
         id: d.id, type: 'surat_jalan', date: d.date, status: d.status, is_locked: !!d.is_locked,
-        sjNo: d.sj_no, sjKepada: d.sj_kepada, sjDriver: d.sj_driver, sjWaktu: d.sj_waktu, vehicleNumber: d.vehicle_number || '',
+        sjNo: d.sj_no, sjKepada: d.sj_kepada, sjDriver: d.sj_driver, sjWaktu: d.sj_waktu, sjBatasKonsumsi: d.sj_batas_konsumsi || getConsumptionDeadline(d.sj_kepada || ''), vehicleNumber: d.vehicle_number || '',
         sjRows: (typeof d.sj_rows === 'string' ? JSON.parse(d.sj_rows) : d.sj_rows || []).filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT')),
         items: d.items || [], imageUrl: d.photo_url || '', comments: d.comments || '', uploadedBy: d.uploaded_by || '',
         sjSignatureAslap: d.sj_signature_aslap, sjSignatureReceiver: d.sj_signature_receiver, receiverName: d.sj_kepada || ''
@@ -402,6 +403,7 @@ export default function SuratJalanView({
         sjNo: sjNoStr,
         sjKepada: sch,
         sjWaktu: details.time,
+        sjBatasKonsumsi: details.consumptionDeadline,
         sjDriver: details.driver,
         sjRows: buildSuratJalanRows(sch, portions),
         sjSignatureAslap: '',
@@ -419,7 +421,7 @@ export default function SuratJalanView({
     if (!isSupabaseConfigured || !supabase) return;
     const { error } = await supabase.from('surat_jalan_docs').upsert({
       id: doc.id, date: doc.date, sj_no: doc.sjNo, sj_kepada: doc.sjKepada, sj_driver: doc.sjDriver,
-      sj_waktu: doc.sjWaktu, vehicle_number: doc.vehicleNumber || '', items: doc.items || [], sj_rows: (doc.sjRows || []).filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT')),
+      sj_waktu: doc.sjWaktu, sj_batas_konsumsi: doc.sjBatasKonsumsi || getConsumptionDeadline(doc.sjKepada || ''), vehicle_number: doc.vehicleNumber || '', items: doc.items || [], sj_rows: (doc.sjRows || []).filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT')),
       photo_url: doc.imageUrl || '', comments: doc.comments || '', sj_signature_aslap: doc.sjSignatureAslap || null,
       sj_signature_receiver: doc.sjSignatureReceiver || null, status: doc.status || 'published', is_locked: !!doc.is_locked,
       uploaded_by: doc.uploadedBy || ''
@@ -767,6 +769,7 @@ export default function SuratJalanView({
                         ...activeDoc,
                         sjKepada: newTarget,
                         sjWaktu: getDefaultReceiptTime(newTarget),
+                        sjBatasKonsumsi: getConsumptionDeadline(newTarget),
                         receiverName: getRecipientName(newTarget)
                       };
                       setActiveDoc(updated);
@@ -793,6 +796,19 @@ export default function SuratJalanView({
                     type="text"
                     value={activeDoc.sjWaktu || ''}
                     onChange={(e) => handleFieldChange('sjWaktu', e.target.value)}
+                    className="text-xs font-bold text-neutral-850 border-b border-dashed border-neutral-300 focus:border-emerald-600 focus:outline-hidden w-full px-1"
+                  />
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold text-neutral-450 uppercase w-32 shrink-0">Batas Konsumsi:</span>
+                {isFieldReadOnly ? (
+                  <span className="text-xs font-extrabold text-neutral-850">{activeDoc.sjBatasKonsumsi || getConsumptionDeadline(activeDoc.sjKepada || '')}</span>
+                ) : (
+                  <input
+                    type="text"
+                    value={activeDoc.sjBatasKonsumsi || getConsumptionDeadline(activeDoc.sjKepada || '')}
+                    onChange={(e) => handleFieldChange('sjBatasKonsumsi', e.target.value)}
                     className="text-xs font-bold text-neutral-850 border-b border-dashed border-neutral-300 focus:border-emerald-600 focus:outline-hidden w-full px-1"
                   />
                 )}

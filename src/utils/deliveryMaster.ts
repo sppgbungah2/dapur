@@ -49,10 +49,21 @@ export function getDeliveryDetails(target: string, portions: PortionConfig) {
     ...assignment,
     recipient: getRecipientName(target),
     time: getDefaultReceiptTime(target),
+    consumptionDeadline: getConsumptionDeadline(target),
     total: portionsForTarget.reduce((sum, item) => sum + item.count, 0),
     breakdown: portionsForTarget.map(item => `${item.label}: ${item.count}`).join(', '),
     portions: portionsForTarget
   };
+}
+
+/** Batas konsumsi makanan sesuai tujuan pengiriman Surat Jalan. */
+export function getConsumptionDeadline(target: string): string {
+  const normalized = target.toLowerCase();
+  if (normalized.includes('sidokumpul') || normalized.includes('sukowati')) return '09.00 WIB';
+  if (normalized.includes('sma') || normalized.includes('ma assa')) return '10.00 WIB';
+  if (normalized.includes('mts')) return '11.00 WIB';
+  if (normalized.includes('smk')) return '12.00 WIB';
+  return '-';
 }
 
 export function buildBastComment(target: string, portions: PortionConfig, menuList: string[] = []) {

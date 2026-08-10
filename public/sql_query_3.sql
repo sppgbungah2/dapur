@@ -151,6 +151,7 @@ CREATE TABLE public.surat_jalan_docs (
   sj_kepada TEXT,
   sj_driver TEXT,
   sj_waktu TEXT,
+  sj_batas_konsumsi TEXT,
   status TEXT DEFAULT 'Terkirim',
   items JSONB DEFAULT '[]'::jsonb,
   sj_rows JSONB DEFAULT '[]'::jsonb,

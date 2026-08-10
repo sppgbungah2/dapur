@@ -22,7 +22,7 @@ export async function initializeOperationalDocuments(dateInput: string, menuList
   }));
   const sj = docs.filter(d => d.type === 'surat_jalan').map(d => ({
     id: `sj-${date}-${d.sjKepada}`, date, status: 'draft', is_locked: false,
-    sj_no: d.sjNo, sj_kepada: d.sjKepada, sj_driver: d.sjDriver, sj_waktu: d.sjWaktu,
+    sj_no: d.sjNo, sj_kepada: d.sjKepada, sj_driver: d.sjDriver, sj_waktu: d.sjWaktu, sj_batas_konsumsi: d.sjBatasKonsumsi,
     sj_rows: d.sjRows, sj_signature_aslap: null, sj_signature_receiver: null, uploaded_by: email, photo_url: d.imageUrl, comments: d.comments, items: []
   }));
   const orlep = docs.filter(d => d.type === 'organoleptik').map(d => ({

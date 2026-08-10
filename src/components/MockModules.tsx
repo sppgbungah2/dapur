@@ -2255,6 +2255,7 @@ export default function MockModules({
               sj_kepada: (item as any).sjKepada || item.receiverName || '',
               sj_driver: (item as any).sjDriver || item.vehicleNumber || '',
               sj_waktu: (item as any).sjWaktu || '',
+              sj_batas_konsumsi: (item as any).sjBatasKonsumsi || '',
               vehicle_number: item.vehicleNumber || '',
               status: item.status || 'Terkirim',
               items: (item as any).items || [],
@@ -2665,7 +2666,7 @@ export default function MockModules({
             if (moduleIndex === 20) return {
               id: doc.id, type: 'surat_jalan', date: doc.date, status: doc.status || 'Aktif', is_locked: !!doc.is_locked,
               vehicleNumber: doc.vehicle_number || '', imageUrl: doc.photo_url || '', comments: doc.comments || '', uploadedBy: doc.uploaded_by || '',
-              receiverName: doc.sj_kepada || '', sjNo: doc.sj_no, sjKepada: doc.sj_kepada, sjDriver: doc.sj_driver, sjWaktu: doc.sj_waktu,
+              receiverName: doc.sj_kepada || '', sjNo: doc.sj_no, sjKepada: doc.sj_kepada, sjDriver: doc.sj_driver, sjWaktu: doc.sj_waktu, sjBatasKonsumsi: doc.sj_batas_konsumsi,
               items: doc.items || [], sjRows: typeof doc.sj_rows === 'string' ? JSON.parse(doc.sj_rows) : doc.sj_rows || [],
               sjSignatureAslap: doc.sj_signature_aslap, sjSignatureReceiver: doc.sj_signature_receiver
             };
@@ -2813,6 +2814,7 @@ const [shipRes, bastRes, sjRes, orlepRes] = await Promise.allSettled([
                 sjKepada: d.sj_kepada,
                 sjDriver: d.sj_driver,
                 sjWaktu: d.sj_waktu,
+                sjBatasKonsumsi: d.sj_batas_konsumsi,
                 items: d.items,
                 sjRows: (typeof d.sj_rows === 'string' ? JSON.parse(d.sj_rows) : d.sj_rows || []).filter((row: any) => !String(row.jenis).includes('Susu Kotak UHT')),
                 sjSignatureAslap: d.sj_signature_aslap,

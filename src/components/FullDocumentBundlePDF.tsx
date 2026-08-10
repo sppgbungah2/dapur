@@ -2,7 +2,7 @@ import React from 'react';
 import { Printer, X, FileText, Download, CheckCircle2, ShieldCheck, Truck, Utensils, Award, Users } from 'lucide-react';
 import { DayMenu, SOPDocument } from '../types';
 import OfficialStamp from './OfficialStamp';
-import { PRIMARY_ASLAP_NAME } from '../utils/deliveryMaster';
+import { getConsumptionDeadline, PRIMARY_ASLAP_NAME } from '../utils/deliveryMaster';
 
 interface FullDocumentBundlePDFProps {
   selectedDate: string;
@@ -130,6 +130,7 @@ export default function FullDocumentBundlePDF({
                 <p className="text-neutral-500 font-semibold">Kepada Yth:</p>
                 <p className="font-extrabold text-neutral-900 text-sm">{doc.sjKepada || doc.receiverName}</p>
                 <p className="text-neutral-600">Tanggal Kirim: <strong>{doc.date}</strong> ({doc.sjWaktu || '06:30 WIB'})</p>
+                <p className="text-neutral-600">Batas Konsumsi: <strong>{doc.sjBatasKonsumsi || getConsumptionDeadline(doc.sjKepada || doc.receiverName || '')}</strong></p>
               </div>
               <div>
                 <p className="text-neutral-500 font-semibold">Armada & Driver:</p>

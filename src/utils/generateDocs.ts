@@ -118,6 +118,7 @@ export async function generateInitialDocsAsync(
           sjNo: sjNoStr,
           sjKepada: sch,
           sjWaktu: details.time,
+          sjBatasKonsumsi: details.consumptionDeadline,
           sjDriver: details.driver,
           sjRows,
           sjSignatureAslap: '',
@@ -205,6 +206,7 @@ export function updateExistingDocsWithPortions(currentDocs: any[], date: string,
         receiverName: details.recipient || doc.receiverName,
         sjDriver: details.driver || doc.sjDriver,
         sjWaktu: details.time || doc.sjWaktu,
+        sjBatasKonsumsi: details.consumptionDeadline || doc.sjBatasKonsumsi,
         sjRows: buildSuratJalanRows(sch, portions)
       };
     }
