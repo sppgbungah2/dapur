@@ -48,12 +48,26 @@ export const DIVISION_CREATOR_MAP: Record<Division, { role: UserRole; label: str
 // Helper to normalize any format of menuList (string[], JSON string, comma string, array of objects) safely into string[]
 export function normalizeMenuList(rawMenuList: any): string[] {
   if (!rawMenuList) return [];
+
+  // Some legacy callers and older Supabase rows pass the complete DayMenu
+  // object instead of its menu_list value.  Always unwrap it here so an
+  // object can never be stringified into a SOP task sentence.
+  if (typeof rawMenuList === 'object' && !Array.isArray(rawMenuList)) {
+    const nestedMenuList = rawMenuList.menuList ?? rawMenuList.menu_list;
+    if (nestedMenuList !== undefined) return normalizeMenuList(nestedMenuList);
+    return [];
+  }
+
   if (Array.isArray(rawMenuList)) {
     return rawMenuList
       .map(item => {
         if (typeof item === 'string') return item.trim();
         if (item && typeof item === 'object') {
-          return String(item.name || item.text || item.item || item.label || item.dish || JSON.stringify(item)).trim();
+          // Nested menu records are valid input too; arbitrary objects are
+          // deliberately ignored instead of becoming JSON in visible SOP text.
+          const nestedMenuList = item.menuList ?? item.menu_list;
+          if (nestedMenuList !== undefined) return normalizeMenuList(nestedMenuList).join(', ');
+          return String(item.name || item.text || item.item || item.label || item.dish || '').trim();
         }
         return String(item || '').trim();
       })
@@ -307,7 +321,8 @@ export function getDefaultTasksForDivision(division: Division, rawMenuList: any)
 }
 
 // Generate complete set of SOP Documents for a single day based on menus
-export function generateInitialSOPsForDate(date: string, menuList: string[]): Record<string, any>[] {
+export function generateInitialSOPsForDate(date: string, rawMenuList: unknown): Record<string, any>[] {
+  const menuList = normalizeMenuList(rawMenuList);
   const sops: any[] = [];
   
   Object.values(Division).forEach(div => {

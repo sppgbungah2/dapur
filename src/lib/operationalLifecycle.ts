@@ -1,7 +1,7 @@
 import { supabase, isSupabaseConfigured, asOperationalDate } from './supabase';
 import { fetchPortionsForDate, generateInitialDocsAsync } from '../utils/generateDocs';
 import { getActiveDeliveryTargets, PRIMARY_ASLAP_NAME } from '../utils/deliveryMaster';
-import { generateInitialSOPsForDate, getCanonicalSopId, getSopTaskTableName } from '../presetData';
+import { generateInitialSOPsForDate, getCanonicalSopId, getSopTaskTableName, normalizeMenuList } from '../presetData';
 import type { SignatureRecord } from '../components/SignatureImportView';
 
 const requireClient = () => {
@@ -10,9 +10,20 @@ const requireClient = () => {
 };
 
 /** Creates all daily drafts in Supabase. UI must only consume the return value after this succeeds. */
-export async function initializeOperationalDocuments(dateInput: string, menuList: string[], email: string) {
+export async function initializeOperationalDocuments(dateInput: string, rawMenuList: unknown, email: string) {
   const date = asOperationalDate(dateInput);
   const db = requireClient();
+  const menuList = normalizeMenuList(rawMenuList);
+  if (!menuList.length) throw new Error('Menu harian belum valid. Isi setidaknya satu menu sebelum inisiasi.');
+
+  // Menu is the source of truth for every generated document.  Save it first
+  // so a refresh/realtime event can never generate tasks from stale UI state.
+  const { error: menuError } = await db.from('day_menus').upsert(
+    { date, menu_list: menuList, created_at: new Date().toISOString(), created_by: email },
+    { onConflict: 'date' }
+  );
+  if (menuError) throw menuError;
+
   const docs = await generateInitialDocsAsync(date, [], menuList.join(', '), email);
   const bast = docs.filter(d => d.type === 'serah_terima').map(d => ({
     id: `bast-${date}-${d.bastSekolah}`, date, status: 'draft', is_locked: false,

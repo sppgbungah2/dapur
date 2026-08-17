@@ -154,7 +154,9 @@ export default function PerencanaanMenuPorsi({
     try {
       const result = await initializeOperationalDocuments(asOperationalDate(selectedDate), menuArr, 'admin@sppg.com');
       setShippingDocs(prev => [...prev.filter(d => d.date !== selectedDate), ...result.docs.map(d => ({ ...d, status: 'draft', is_locked: false }))]);
-      onGenerateSOPs(selectedDate, menuArr);
+      // initializeOperationalDocuments has already persisted the exact same
+      // SOP rows and task rows.  Do not launch a second, unawaited save here:
+      // it could race with the first request and reintroduce stale menu data.
       setInitSOPStatus('success'); setInitSJStatus('success'); setInitBASTStatus('success'); setInitOrlepStatus('success');
       onSuccess('Semua draft berhasil tersimpan di Supabase.');
     } catch (err) {

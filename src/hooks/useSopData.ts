@@ -226,7 +226,11 @@ export function useSopData(selectedDate: string) {
         }
       } else {
         // Fallback: Generate initial SOPs for this date if no records exist in cloud
-        const initialSops = generateInitialSOPsForDate(targetDate, dayMenus);
+        const fallbackMenu = normalizeMenuList(
+          menuData?.find((m: any) => normalizeDateISO(m.date) === targetDate)?.menu_list
+          ?? dayMenus.find(menu => normalizeDateISO(menu.date) === targetDate)?.menuList
+        );
+        const initialSops = generateInitialSOPsForDate(targetDate, fallbackMenu);
         setSops(prev => {
           const otherDates = prev.filter(s => normalizeDateISO(s.date) !== targetDate);
           return [...otherDates, ...initialSops];
@@ -234,7 +238,10 @@ export function useSopData(selectedDate: string) {
       }
     } catch (err: any) {
       console.warn('Note on SOP fetch from Supabase (using local state fallback):', err?.message || err);
-      const initialSops = generateInitialSOPsForDate(targetDate, dayMenus);
+      const fallbackMenu = normalizeMenuList(
+        dayMenus.find(menu => normalizeDateISO(menu.date) === targetDate)?.menuList
+      );
+      const initialSops = generateInitialSOPsForDate(targetDate, fallbackMenu);
       setSops(prev => {
         const otherDates = prev.filter(s => normalizeDateISO(s.date) !== targetDate);
         return [...otherDates, ...initialSops];
@@ -354,11 +361,8 @@ export function useSopData(selectedDate: string) {
 
         // Clean old records from division task tables
         for (const tbl of targetTables) {
-          try {
-            await supabase.from(tbl).delete().in('sop_id', deleteSopIds);
-          } catch (e) {
-            console.warn(`Warning cleaning tasks from ${tbl}:`, e);
-          }
+          const { error: deleteError } = await supabase.from(tbl).delete().in('sop_id', deleteSopIds);
+          if (deleteError) throw deleteError;
         }
 
         const tasksPayloadWithSId = normalizedSOP.tasks.map((t, idx) => ({
@@ -460,7 +464,8 @@ export function useSopData(selectedDate: string) {
             updated_at: new Date().toISOString()
           };
 
-          await supabase.from('sops').upsert(sopPayload);
+          const { error: sopError } = await supabase.from('sops').upsert(sopPayload);
+          if (sopError) throw sopError;
 
           const targetTables = getSopTaskTableNames(s.division);
           const altSopId = `SOP_${divSlug}_${isoDate}`;
@@ -488,11 +493,8 @@ export function useSopData(selectedDate: string) {
 
           // Clean up old tasks in target division tables
           for (const tbl of targetTables) {
-            try {
-              await supabase.from(tbl).delete().in('sop_id', deleteSopIds);
-            } catch (e) {
-              console.warn(`Warning deleting old tasks from ${tbl}:`, e);
-            }
+            const { error: deleteError } = await supabase.from(tbl).delete().in('sop_id', deleteSopIds);
+            if (deleteError) throw deleteError;
           }
 
           // Write tasks to division task tables (sop_tasks_<divisi> and sop_task_<divisi>)
