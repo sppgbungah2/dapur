@@ -291,11 +291,11 @@ export default function OrganoleptikView({
 
   // Components to be rated, mapping each to the corresponding daily menu item
   const evaluationComponents = [
-    { code: 'MP', name: `Makanan Pokok (${menuListForOrlep[0] || 'Nasi Putih'})` },
-    { code: 'LH', name: `Lauk Hewani (${menuListForOrlep[1] || 'Lauk Protein'})` },
-    { code: 'LN', name: `Lauk Nabati (${menuListForOrlep[2] || 'Tahu/Tempe'})` },
-    { code: 'SY', name: `Sayur Hidangan (${menuListForOrlep[3] || 'Sayuran'})` },
-    { code: 'B', name: `Buah / Susu (${menuListForOrlep[4] || 'Buah/Susu'})` }
+    { code: 'MP', name: 'Makanan Pokok (MP)' },
+    { code: 'LH', name: 'Lauk Hewani (LH)' },
+    { code: 'LN', name: 'Lauk Nabati (LN)' },
+    { code: 'SY', name: 'Sayur (SY)' },
+    { code: 'B', name: 'Buah / Susu (B)' }
   ];
 
   // Recalculate average scores in real-time
@@ -542,7 +542,7 @@ export default function OrganoleptikView({
 
           <div className="space-y-2 mb-6">
             <span className="text-[10px] font-bold text-neutral-450 uppercase block">Menu Masakan Harian Yang Diuji:</span>
-            {isLocked ? (
+            {isLocked && !isAdminOrAslap ? (
               <p className="font-extrabold text-neutral-900 bg-neutral-50 px-3 py-2 rounded-xl border border-neutral-200 inline-block text-xs font-sans">
                 {activeDoc.orlepMenu}
               </p>
@@ -587,7 +587,7 @@ export default function OrganoleptikView({
                         
                         {/* Rasa cell */}
                         <td className="p-2 border-r border-neutral-200">
-                          {isLocked ? (
+                          {isLocked && !isAdminOrAslap ? (
                             <span className="font-mono text-neutral-600">{rasa} / 5</span>
                           ) : (
                             renderScoreControl(comp.code, 'rasa', rasa)
@@ -596,7 +596,7 @@ export default function OrganoleptikView({
 
                         {/* Warna cell */}
                         <td className="p-2 border-r border-neutral-200">
-                          {isLocked ? (
+                          {isLocked && !isAdminOrAslap ? (
                             <span className="font-mono text-neutral-600">{warna} / 5</span>
                           ) : (
                             renderScoreControl(comp.code, 'warna', warna)
@@ -605,7 +605,7 @@ export default function OrganoleptikView({
 
                         {/* Aroma cell */}
                         <td className="p-2 border-r border-neutral-200">
-                          {isLocked ? (
+                          {isLocked && !isAdminOrAslap ? (
                             <span className="font-mono text-neutral-600">{aroma} / 5</span>
                           ) : (
                             renderScoreControl(comp.code, 'aroma', aroma)
@@ -614,7 +614,7 @@ export default function OrganoleptikView({
 
                         {/* Tekstur cell */}
                         <td className="p-2 border-r border-neutral-200">
-                          {isLocked ? (
+                          {isLocked && !isAdminOrAslap ? (
                             <span className="font-mono text-neutral-600">{tekstur} / 5</span>
                           ) : (
                             renderScoreControl(comp.code, 'tekstur', tekstur)
@@ -844,7 +844,7 @@ export default function OrganoleptikView({
                     {mn.date}
                   </h4>
                   <p className="text-[10px] text-neutral-500 mt-2">
-                    {hasDocs ? `${signedDocs} dari ${totalDocs} Form TTD Lengkap` : 'Organoleptik Belum Diinisiasi'}
+                    <span className={signedDocs === 6 ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>{signedDocs} dari 6</span> Form TTD Lengkap
                   </p>
                 </div>
                 <div className="mt-4 pt-3 border-t border-neutral-100 flex justify-end">

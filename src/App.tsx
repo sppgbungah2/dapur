@@ -3,7 +3,7 @@ import {
   ClipboardList, Package, Wrench, ShieldCheck, ShoppingCart, Truck, 
   Camera, Users, Calendar, FileText, CheckCircle2, Flame, RefreshCcw, 
   HelpCircle, ChevronRight, UserCircle, Bell, ArrowRight, ShieldAlert,
-  Menu, Info, Eye, Trash2, ClipboardCheck, LayoutDashboard, FileSpreadsheet
+  Menu, Info, Eye, Trash2, ClipboardCheck, LayoutDashboard, FileSpreadsheet, Loader2, ArrowLeft
 } from 'lucide-react';
 import { Division, UserRole, DayMenu, SOPDocument } from './types';
 import { PRESET_MENUS, DIVISION_CREATOR_MAP, generateInitialSOPsForDate, getDefaultTasksForDivision } from './presetData';
@@ -42,6 +42,8 @@ export default function App() {
     setActiveSopDetail 
   } = useRouting(loggedInUser);
 
+  const [activeSopDateView, setActiveSopDateView] = useState<string | null>(null);
+
   const {
     sops,
     setSops,
@@ -55,13 +57,10 @@ export default function App() {
     handleSaveSopsToCloud,
     handleGenerateSOPs,
     handleDeleteSOP
-  } = useSopData(selectedDate);
+  } = useSopData(selectedDate, activeSopDateView !== null || activeSopDetail !== null || !!loggedInUser?.isCoordinator);
 
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(UserRole.ADMIN);
   const [currentUsername, setCurrentUsername] = useState<string>('Sistem Administrator');
-  
-  // Inner SOP Sub-Tab selection
-  const [currentSubTab, setCurrentSubTab] = useState<'date-grid' | 'dashboard' | 'create' | 'recap'>('date-grid');
   
   // Mobile navigation drawer toggle
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -982,7 +981,7 @@ export default function App() {
           ) : (
             <>
             {!isPrimaryAdmin && (
-              <DocumentDatePicker selectedDate={selectedDate} onSelectDate={(date) => { setSelectedDate(date); setActiveSopDetail(null); }} />
+              <DocumentDatePicker selectedDate={selectedDate} onSelectDate={(date) => { setSelectedDate(date); setActiveSopDetail(null); setActiveSopDateView(null); }} />
             )}
             {activeSopDetail ? (
             /* Render Full-depth checklist printed form sheet */
@@ -1015,143 +1014,79 @@ export default function App() {
             </div>
           ) : (
             /* SOP Management Page */
-            <div className="space-y-6">
+            <div className="space-y-6 animate-fade-in">
               {/* Context Banner */}
               <div className="bg-white p-5 rounded-2xl border border-neutral-100 shadow-3xs flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <h1 className="text-xl font-bold text-neutral-900 font-display">
-                    Manajemen SOP Dapur Harian Berbasis Menu
+                    SOP Harian Digital
                   </h1>
                   <p className="text-xs text-neutral-500 max-w-xl">
-                    SOP Dapur SPPG disinkronkan langsung berbasis menu harian gizi tinggi. Gunakan form centang digital ini untuk mengganti kertas cetak.
+                    Form centang elektronik pengawasan tugas harian untuk setiap divisi operasional dapur.
                   </p>
                 </div>
 
-                {/* Sub Tab selection buttons */}
-                <div className="flex border border-neutral-200 bg-neutral-50 p-1 rounded-xl shrink-0 tab-buttons no-print flex-wrap gap-1 sm:gap-0">
+                {activeSopDateView && (
                   <button
-                    onClick={() => setCurrentSubTab('date-grid')}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      currentSubTab === 'date-grid'
-                        ? 'bg-emerald-800 text-white shadow-2xs'
-                        : 'text-neutral-500 hover:text-neutral-800'
-                    }`}
+                    onClick={() => setActiveSopDateView(null)}
+                    className="flex border border-neutral-200 bg-neutral-50 hover:bg-neutral-100 px-4 py-2 rounded-xl text-xs font-bold transition-all items-center gap-2 text-neutral-600"
                   >
-                    Kalender SOP
+                    <ArrowLeft className="w-4 h-4" /> Kembali
                   </button>
-                  <button
-                    onClick={() => setCurrentSubTab('dashboard')}
-                    className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      currentSubTab === 'dashboard'
-                        ? 'bg-emerald-800 text-white shadow-2xs'
-                        : 'text-neutral-500 hover:text-neutral-800'
-                    }`}
-                  >
-                    Dashboard SOP
-                  </button>
-                </div>
+                )}
               </div>
-              {/* Render Selected SubTab */}
-              {currentSubTab === 'date-grid' ? (
-                <div className="space-y-6 animate-fade-in">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <h2 className="text-xl font-extrabold font-sans text-neutral-900 flex items-center gap-2 tracking-tight">
-                        <Calendar className="h-6 w-6 text-emerald-800 shrink-0" />
-                        Pilih Tanggal SOP Harian
-                      </h2>
-                      <p className="text-xs text-neutral-500 font-mono">
-                        Silakan pilih tanggal untuk mengelola dan mengisi checklist SOP Dapur.
-                      </p>
-                    </div>
-                  </div>
 
-                  {/* Aggregated Performance Scorecard Tiles */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="bg-white p-5 rounded-2xl border border-neutral-100 shadow-xs flex flex-col justify-between">
-                      <span className="text-neutral-400 font-medium text-xs block uppercase tracking-wider">Total Form SOP</span>
-                      <div className="mt-2 flex items-baseline gap-1">
-                        <span className="text-2xl font-bold text-neutral-800">{totalSOPs}</span>
-                        <span className="text-[10px] text-neutral-400 font-mono">Berkas</span>
-                      </div>
+              {!activeSopDateView ? (
+                // ---------------- MONTH GRID VIEW ----------------
+                <div className="space-y-6">
+                  {loadingSops ? (
+                    <div className="flex flex-col items-center justify-center p-16 space-y-4 border border-dashed border-emerald-200 rounded-3xl bg-emerald-50/50">
+                      <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
+                      <p className="text-sm font-semibold text-emerald-800 text-center">Menyinkronkan Data SOP...</p>
                     </div>
-                    
-                    <div className="bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100/50 flex flex-col justify-between">
-                      <span className="text-emerald-800/80 font-semibold text-xs block uppercase tracking-wider">SOP Terkunci</span>
-                      <div className="mt-2 flex items-baseline gap-1">
-                        <span className="text-2xl font-bold text-emerald-800">{completedSOPs}</span>
-                        <span className="text-[10px] text-emerald-500 font-mono font-bold">Kunci</span>
-                      </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      {[...dayMenus]
+                        .filter(mn => mn.date.startsWith(selectedDate.slice(0, 7)))
+                        .sort((a,b) => a.date.localeCompare(b.date))
+                        .map(mn => {
+                          const sopsForDate = sops.filter(s => s.date === mn.date);
+                          const totalSops = sopsForDate.length;
+                          const completedSops = sopsForDate.filter(s => s.status === 'selesai').length;
+                          
+                          return (
+                            <div 
+                              key={mn.date}
+                              onClick={() => {
+                                setSelectedDate(mn.date);
+                                setActiveSopDateView(mn.date);
+                              }}
+                              className="bg-white border border-neutral-200 hover:border-emerald-600 rounded-2xl p-5 shadow-3xs cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group flex flex-col justify-between"
+                            >
+                              <div>
+                                <span className="text-[10px] text-neutral-400 font-mono block uppercase tracking-wider mb-1">
+                                  TANGGAL SOP
+                                </span>
+                                <h4 className="font-bold text-sm text-neutral-850 group-hover:text-emerald-800 transition-colors">
+                                  {mn.date}
+                                </h4>
+                                <p className="text-[10px] text-neutral-500 mt-2">
+                                  <span className={completedSops === 7 ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>{completedSops} dari 7</span> Divisi Terkunci
+                                </p>
+                              </div>
+                              <div className="mt-4 pt-3 border-t border-neutral-100 flex justify-end">
+                                <span className="text-[10px] font-bold flex items-center gap-1 text-emerald-700">
+                                  Buka Divisi <ChevronRight className="h-3 w-3" />
+                                </span>
+                              </div>
+                            </div>
+                          );
+                      })}
                     </div>
-
-                    <div className="bg-amber-50/50 p-5 rounded-2xl border border-amber-100/50 flex flex-col justify-between">
-                      <span className="text-amber-800/80 font-semibold text-xs block uppercase tracking-wider">Sedang Berjalan</span>
-                      <div className="mt-2 flex items-baseline gap-1">
-                        <span className="text-2xl font-bold text-amber-700">{activeSOPs}</span>
-                        <span className="text-[10px] text-amber-500 font-mono font-bold">Eksis</span>
-                      </div>
-                    </div>
-
-                    <div className="bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100/50 flex flex-col justify-between">
-                      <span className="text-indigo-800/80 font-semibold text-xs block uppercase tracking-wider">Skor Kepatuhan</span>
-                      <div className="mt-2 flex items-baseline gap-1">
-                        <span className="text-2xl font-bold text-indigo-800">{complianceRate}%</span>
-                        <span className="text-[10px] text-indigo-500 font-mono font-bold">Tasks</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                    {[...dayMenus].sort((a,b) => a.date.localeCompare(b.date)).map(mn => {
-                      const sopsForDate = sops.filter(s => s.date === mn.date);
-                      const totalSops = sopsForDate.length;
-                      const completedSops = sopsForDate.filter(s => s.status === 'selesai').length;
-                      const hasSops = totalSops > 0;
-                      
-                      let totalTasks = 0;
-                      let completedTasks = 0;
-                      sopsForDate.forEach(sop => {
-                        totalTasks += sop.tasks.length;
-                        completedTasks += sop.tasks.filter(t => t.is_checked).length;
-                      });
-                      
-                      return (
-                        <div 
-                          key={mn.date}
-                          onClick={() => {
-                            setSelectedDate(mn.date);
-                            setCurrentSubTab('dashboard');
-                          }}
-                          className="bg-white border border-neutral-200 hover:border-emerald-600 rounded-2xl p-5 shadow-3xs cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 group flex flex-col justify-between"
-                        >
-                          <div>
-                            <span className="text-[10px] text-neutral-400 font-mono block uppercase tracking-wider mb-1">
-                              TANGGAL SOP
-                            </span>
-                            <h4 className="font-bold text-sm text-neutral-850 group-hover:text-emerald-800 transition-colors">
-                              {mn.date}
-                            </h4>
-                            <p className="text-[10px] text-neutral-500 mt-2">
-                              {hasSops ? `${completedSops} dari ${totalSops} SOP Terkunci` : 'SOP Belum Diinisiasi'}
-                            </p>
-                            {hasSops && (
-                              <p className="text-[10px] text-indigo-500 mt-1 font-semibold">
-                                {completedTasks} / {totalTasks} Tasks Selesai
-                              </p>
-                            )}
-                          </div>
-                          <div className="mt-4 pt-3 border-t border-neutral-100 flex justify-end">
-                            <span className="text-[10px] font-bold flex items-center gap-1 text-emerald-700">
-                              Buka Checklist <ChevronRight className="h-3 w-3" />
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  )}
                 </div>
               ) : (
-                /* 2.A MAIN SOP DASHBOARD SUB-TAB */
+                // ---------------- DIVISIONS PER DATE VIEW ----------------
                 <div className="space-y-6">
                   {/* Selected Menu Highlight board */}
                   <div className="bg-white border border-neutral-200/80 rounded-2xl p-6 shadow-xs space-y-4">
@@ -1160,18 +1095,11 @@ export default function App() {
                         <Flame className="h-5 w-5 text-emerald-800" />
                         <div>
                           <h3 className="font-bold text-neutral-800 text-sm font-display">
-                            Menu Gizi Aktif Terpilih
+                            Menu Gizi Aktif
                           </h3>
-                          <p className="text-[11px] text-neutral-400">Dimasukkan oleh Ahli Gizi untuk konsumsi asrama santri</p>
+                          <p className="text-[11px] text-neutral-400">Tanggal: {activeSopDateView}</p>
                         </div>
                       </div>
-                      
-                      <button
-                        onClick={() => setCurrentSubTab('create')}
-                        className="text-xs text-emerald-800 hover:text-emerald-900 font-bold flex items-center gap-1.5 hover:underline"
-                      >
-                        Kelola Menu &amp; SOP <ChevronRight className="h-3 w-3" />
-                      </button>
                     </div>
 
                     {getMenuForSelectedDate() ? (
@@ -1191,7 +1119,6 @@ export default function App() {
                         <Info className="h-6 w-6 text-neutral-400 mx-auto" />
                         <div className="space-y-1">
                           <p className="text-xs font-semibold text-neutral-600">Menu Belum Dikeluarkan untuk Tanggal Ini</p>
-                          <p className="text-[11.5px] text-neutral-400 max-w-sm mx-auto">Untuk menghasilkan tugas centang-centang harian, atur menu harian terlebih dahulu melalui <strong>"Set Master"</strong> di Dashboard SOP.</p>
                         </div>
                       </div>
                     )}
@@ -1208,11 +1135,9 @@ export default function App() {
                         <ShieldAlert className="h-10 w-10 text-amber-500 mx-auto animate-bounce" />
                         <div className="space-y-1.5">
                           <h4 className="text-neutral-700 font-bold text-sm">SOP Dapur Belum Dipublikasikan</h4>
-                          <p className="text-xs text-neutral-400 max-w-sm mx-auto">Checklist harian belum dikomposisikan oleh Chef, Ahli Gizi, atau Aslap. Ketuk tombol di bawah untuk membuat secara otomatis.</p>
                         </div>
                         <button
                           onClick={() => {
-                            // Quick auto-generate using preloaded menu
                             const defaultList = ['Nasi Putih', 'Krawu Ayam Bungah', 'Tempe Goreng Ketumbar', 'Kupasan Timun Segar', 'Sambal Serundeng kelapa', 'Pisang'];
                             handleSaveMenu(selectedDate, defaultList);
                             handleGenerateSOPs(selectedDate);
@@ -1254,7 +1179,7 @@ export default function App() {
                                 </div>
 
                                 <p className="text-[10px] text-neutral-400 mt-2">
-                                  Dibuat: {sop.creatorName} ({sop.creatorRole.replace(' (Asisten Lapangan)', '').replace(' / Juru Masak', '')})
+                                  Dibuat: {sop.creatorName}
                                 </p>
                               </div>
 

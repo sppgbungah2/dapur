@@ -2724,12 +2724,13 @@ export default function MockModules({
         // Fetch Shipping Docs (BAST, Surat Jalan, Organoleptik, Ompreng) across dedicated tables
         try {
           const targetDate = selectedDate || '2026-06-16';
+          const targetMonth = targetDate.slice(0, 7);
 
-const [shipRes, bastRes, sjRes, orlepRes] = await Promise.allSettled([
-            supabase.from('shipping_docs').select('*').order('date', { ascending: false }).limit(500),
-            supabase.from('bast_docs').select('*').order('date', { ascending: false }).limit(500),
-            supabase.from('surat_jalan_docs').select('*').order('date', { ascending: false }).limit(500),
-            supabase.from('organoleptik_docs').select('*').order('date', { ascending: false }).limit(500)
+          const [shipRes, bastRes, sjRes, orlepRes] = await Promise.allSettled([
+            supabase.from('shipping_docs').select('*').like('date', `${targetMonth}%`).order('date', { ascending: false }),
+            supabase.from('bast_docs').select('*').like('date', `${targetMonth}%`).order('date', { ascending: false }),
+            supabase.from('surat_jalan_docs').select('*').like('date', `${targetMonth}%`).order('date', { ascending: false }),
+            supabase.from('organoleptik_docs').select('*').like('date', `${targetMonth}%`).order('date', { ascending: false })
           ]);
 
           const documentErrors = [shipRes, bastRes, sjRes, orlepRes]

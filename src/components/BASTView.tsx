@@ -725,7 +725,7 @@ export default function BASTView({
 
           <div className="space-y-2 mb-8">
             <span className="text-[10px] font-bold text-neutral-400 uppercase block">Keterangan / Catatan Serah Terima:</span>
-            {isLocked ? (
+            {isLocked && !isAdminOrAslap ? (
               <p className="bg-neutral-50 p-4 rounded-xl border border-neutral-200 text-xs text-neutral-800 italic font-mono leading-relaxed">
                 "{activeDoc.comments || 'Makanan dan perlengkapan Dapur SPPG diterima dalam keadaan lengkap, hangat, higienis, dan baik.'}"
               </p>
@@ -894,7 +894,7 @@ export default function BASTView({
                     {mn.date}
                   </h4>
                   <p className="text-[10px] text-neutral-500 mt-2">
-                    {hasDocs ? `${signedDocs} dari ${totalDocs} BAST TTD Lengkap` : 'BAST Belum Diinisiasi'}
+                    <span className={signedDocs === 6 ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>{signedDocs} dari 6</span> BAST TTD Lengkap
                   </p>
                 </div>
                 <div className="mt-4 pt-3 border-t border-neutral-100 flex justify-end">

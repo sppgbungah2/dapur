@@ -981,7 +981,7 @@ export default function SuratJalanView({
 
           <div className="space-y-2 mb-8">
             <span className="text-[10px] font-bold text-neutral-400 uppercase block">Catatan Driver / Aslap:</span>
-            {isLocked ? (
+            {isLocked && !isAdminOrAslap ? (
               <p className="bg-neutral-50 p-4 rounded-xl border border-neutral-200 text-xs text-neutral-800 italic font-mono leading-relaxed">
                 "{activeDoc.comments || 'Pengiriman makanan terdistribusi aman & tepat waktu menggunakan box insulated.'}"
               </p>
@@ -1156,7 +1156,7 @@ export default function SuratJalanView({
                     {mn.date}
                   </h4>
                   <p className="text-[10px] text-neutral-500 mt-2">
-                    {hasSj ? `${signedSj} dari ${totalSj} Surat Jalan TTD Lengkap` : 'Surat Jalan Belum Diinisiasi'}
+                    <span className={signedSj === 6 ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>{signedSj} dari 6</span> Surat Jalan TTD Lengkap
                   </p>
                 </div>
                 <div className="mt-4 pt-3 border-t border-neutral-100 flex justify-end">

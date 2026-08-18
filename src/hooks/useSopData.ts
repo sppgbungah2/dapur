@@ -20,7 +20,7 @@ const toIsoTimestampOrNull = (val?: string | null): string | null => {
   return null;
 };
 
-export function useSopData(selectedDate: string) {
+export function useSopData(selectedDate: string, fetchTasks: boolean = false) {
   const [dayMenus, setDayMenus] = useState<DayMenu[]>([]);
   const [sops, setSops] = useState<SOPDocument[]>([]);
   const [loadingSops, setLoadingSops] = useState<boolean>(true);
@@ -40,6 +40,7 @@ export function useSopData(selectedDate: string) {
     }
 
     const targetDate = normalizeDateISO(selectedDate);
+    const targetMonth = targetDate.slice(0, 7);
 
     try {
       setLoadingSops(true);
@@ -52,7 +53,7 @@ export function useSopData(selectedDate: string) {
         const { data: mData, error: menuErr } = await supabase
           .from('day_menus')
           .select('*')
-          
+          .like('date', `${targetMonth}%`)
           .order('date', { ascending: true });
         if (!menuErr) menuData = mData;
       } catch (mE) {
@@ -63,7 +64,7 @@ export function useSopData(selectedDate: string) {
         const { data: sData, error: sopErr } = await supabase
           .from('sops')
           .select('*')
-          
+          .like('date', `${targetMonth}%`)
           .order('date', { ascending: true });
         if (!sopErr) sopData = sData;
       } catch (sE) {
@@ -81,19 +82,21 @@ export function useSopData(selectedDate: string) {
       ];
 
       let taskFetchResults: { tbl: string; data: any[] }[] = [];
-      try {
-        taskFetchResults = await Promise.all(
-          divisionTables.map(tbl =>
-            supabase
-              .from(tbl)
-              .select('*')
-              .like('sop_id', `%${targetDate}%`)
-              .order('sort_order', { ascending: true })
-              .then(res => ({ tbl, data: res.data || [] }), () => ({ tbl, data: [] }))
-          )
-        );
-      } catch (tE) {
-        console.warn('Unable to query division tasks from Supabase, using local fallback:', tE);
+      if (fetchTasks) {
+        try {
+          taskFetchResults = await Promise.all(
+            divisionTables.map(tbl =>
+              supabase
+                .from(tbl)
+                .select('*')
+                .like('sop_id', `%${targetDate}%`)
+                .order('sort_order', { ascending: true })
+                .then(res => ({ tbl, data: res.data || [] }), () => ({ tbl, data: [] }))
+            )
+          );
+        } catch (tE) {
+          console.warn('Unable to query division tasks from Supabase, using local fallback:', tE);
+        }
       }
 
       const tableDataMap = new Map<string, any[]>();
@@ -228,7 +231,6 @@ export function useSopData(selectedDate: string) {
         // Fallback: Generate initial SOPs for this date if no records exist in cloud
         const fallbackMenu = normalizeMenuList(
           menuData?.find((m: any) => normalizeDateISO(m.date) === targetDate)?.menu_list
-          ?? dayMenus.find(menu => normalizeDateISO(menu.date) === targetDate)?.menuList
         );
         const initialSops = generateInitialSOPsForDate(targetDate, fallbackMenu);
         setSops(prev => {
@@ -238,19 +240,11 @@ export function useSopData(selectedDate: string) {
       }
     } catch (err: any) {
       console.warn('Note on SOP fetch from Supabase (using local state fallback):', err?.message || err);
-      const fallbackMenu = normalizeMenuList(
-        dayMenus.find(menu => normalizeDateISO(menu.date) === targetDate)?.menuList
-      );
-      const initialSops = generateInitialSOPsForDate(targetDate, fallbackMenu);
-      setSops(prev => {
-        const otherDates = prev.filter(s => normalizeDateISO(s.date) !== targetDate);
-        return [...otherDates, ...initialSops];
-      });
       setSopError(null);
     } finally {
       setLoadingSops(false);
     }
-  }, [selectedDate, dayMenus]);
+  }, [selectedDate, fetchTasks]);
 
   // Initial fetch and Event-based Supabase Realtime synchronization
   useEffect(() => {
