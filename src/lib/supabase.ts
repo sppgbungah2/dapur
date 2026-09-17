@@ -12,25 +12,48 @@ const getLocalStorage = (key: string) => {
   return null;
 };
 
-const supabaseUrl = getLocalStorage('CUSTOM_SUPABASE_URL') || (import.meta as any).env?.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = getLocalStorage('CUSTOM_SUPABASE_ANON_KEY') || (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl =
+  getLocalStorage('CUSTOM_SUPABASE_URL') ||
+  (import.meta as any).env?.VITE_SUPABASE_URL ||
+  'https://db.naracode.my.id';
+
+const supabaseAnonKey =
+  getLocalStorage('CUSTOM_SUPABASE_ANON_KEY') ||
+  (import.meta as any).env?.VITE_SUPABASE_ANON_KEY ||
+  '';
 
 // Clean up standard placeholder strings and invalid values
-const isValidUrl = (url: string) => url && url.startsWith('http') && !url.includes('your_project_id') && !url.includes('api.local.net') && url !== 'null' && url !== 'undefined';
-const isValidKey = (key: string) => key && !key.includes('your_public_anon_key_here') && !key.includes('mock-anon-key') && key.trim() !== '' && key !== 'null' && key !== 'undefined';
+const isValidUrl = (url: string) =>
+  url &&
+  url.startsWith('http') &&
+  !url.includes('your_project_id') &&
+  !url.includes('api.local.net') &&
+  url !== 'null' &&
+  url !== 'undefined';
+
+const isValidKey = (key: string) =>
+  key &&
+  !key.includes('your_public_anon_key_here') &&
+  !key.includes('mock-anon-key') &&
+  key.trim() !== '' &&
+  key !== 'null' &&
+  key !== 'undefined';
 
 export const isSupabaseConfigured = isValidUrl(supabaseUrl) && isValidKey(supabaseAnonKey);
 
 // Real Supabase client instance (or null if not yet configured)
-export const supabase = isSupabaseConfigured 
+export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
+      db: {
+        schema: 'dapur_db', // Mengarah langsung ke schema khusus Dapur
+      },
       auth: {
         persistSession: true,
         autoRefreshToken: true,
       },
       realtime: {
         timeout: 10000,
-      }
+      },
     })
   : null;
 
@@ -40,15 +63,19 @@ export const supabase = isSupabaseConfigured
  */
 export function getLocalDateString(date: Date = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit'
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   }).formatToParts(date);
-  const value = (kind: string) => parts.find(part => part.type === kind)?.value || '';
+  const value = (kind: string) => parts.find((part) => part.type === kind)?.value || '';
   return `${value('year')}-${value('month')}-${value('day')}`;
 }
 
 /** Validate input from <input type="date"> without Date parsing. */
 export function asOperationalDate(value: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Tanggal operasional harus berformat YYYY-MM-DD.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value))
+    throw new Error('Tanggal operasional harus berformat YYYY-MM-DD.');
   return value;
 }
 
@@ -65,14 +92,21 @@ export interface UserProfile {
 // Map emails or user UIDs to the relevant operational role in SPPG Kitchen
 export function mapUserToProfile(uid: string, email: string): UserProfile {
   const normEmail = email.toLowerCase().trim();
-  
+
   // Specific instruction: User maghfurmunif@gmail.com and punkysme@gmail.com are Admins
-  if (normEmail === 'maghfurmunif@gmail.com' || normEmail === 'punkysme@gmail.com' || uid === 'd5454d9d-1d50-4baa-b5b9-f8693694db4a') {
+  if (
+    normEmail === 'maghfurmunif@gmail.com' ||
+    normEmail === 'punkysme@gmail.com' ||
+    uid === 'd5454d9d-1d50-4baa-b5b9-f8693694db4a'
+  ) {
     return {
       id: uid,
       email: normEmail === 'punkysme@gmail.com' ? 'punkysme@gmail.com' : 'maghfurmunif@gmail.com',
       role: UserRole.ADMIN,
-      fullName: normEmail === 'punkysme@gmail.com' ? 'Ahmad Fajrul Falah (Admin Utama)' : 'Ustadz Maghfur Munif (Admin Utama)'
+      fullName:
+        normEmail === 'punkysme@gmail.com'
+          ? 'Ahmad Fajrul Falah (Admin Utama)'
+          : 'Ustadz Maghfur Munif (Admin Utama)',
     };
   }
 
@@ -82,7 +116,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.ADMIN,
-      fullName: 'Ustadz Maghfur Munif (Admin Utama)'
+      fullName: 'Ustadz Maghfur Munif (Admin Utama)',
     };
   }
   if (normEmail === 'rifkah@qomaruddin.com') {
@@ -90,7 +124,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.ADMIN,
-      fullName: 'Ibu Rifkah (Admin Utama)'
+      fullName: 'Ibu Rifkah (Admin Utama)',
     };
   }
   if (normEmail === 'fajar@qomaruddin.com') {
@@ -98,7 +132,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.ADMIN,
-      fullName: 'Bpk. Fajar (Admin Utama)'
+      fullName: 'Bpk. Fajar (Admin Utama)',
     };
   }
   if (normEmail === 'sam@qomaruddin.com') {
@@ -106,7 +140,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.ADMIN,
-      fullName: 'Bpk. Sam (Admin Utama)'
+      fullName: 'Bpk. Sam (Admin Utama)',
     };
   }
 
@@ -116,7 +150,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.PENERIMA,
-      fullName: "MA Assa'adah (Penerima)"
+      fullName: "MA Assa'adah (Penerima)",
     };
   }
   if (normEmail === 'smk@qomaruddin.com') {
@@ -124,7 +158,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.PENERIMA,
-      fullName: "SMK Assa'adah (Penerima)"
+      fullName: "SMK Assa'adah (Penerima)",
     };
   }
   if (normEmail === 'sma@qomaruddin.com') {
@@ -132,7 +166,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.PENERIMA,
-      fullName: "SMA Assa'adah (Penerima)"
+      fullName: "SMA Assa'adah (Penerima)",
     };
   }
   if (normEmail === 'mts@qomaruddin.com') {
@@ -140,7 +174,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.PENERIMA,
-      fullName: "MTS Assa'adah II (Penerima)"
+      fullName: "MTS Assa'adah II (Penerima)",
     };
   }
   if (normEmail === 'sukowati@qomaruddin.com') {
@@ -148,7 +182,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.PENERIMA,
-      fullName: "Desa Sukowati (Penerima)"
+      fullName: 'Desa Sukowati (Penerima)',
     };
   }
   if (normEmail === 'sidokumpul@qomaruddin.com') {
@@ -156,7 +190,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.PENERIMA,
-      fullName: "Desa Sidokumpul (Penerima)"
+      fullName: 'Desa Sidokumpul (Penerima)',
     };
   }
 
@@ -166,7 +200,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.CHEF,
-      fullName: 'Rizka Aulia (Head Chef)'
+      fullName: 'Rizka Aulia (Head Chef)',
     };
   }
   if (normEmail === 'gizi@qomaruddin.com') {
@@ -174,7 +208,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.AHLI_GIZI,
-      fullName: 'Avianti Rahma Dianita (Ahli Gizi)'
+      fullName: 'Avianti Rahma Dianita (Ahli Gizi)',
     };
   }
   if (normEmail === 'akuntan@qomaruddin.com') {
@@ -182,7 +216,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.AKUNTAN,
-      fullName: 'Staff Akuntan (Tim Utama)'
+      fullName: 'Staff Akuntan (Tim Utama)',
     };
   }
 
@@ -194,7 +228,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       role: UserRole.CHEF,
       fullName: 'Koordinator Persiapan & Stocking',
       isCoordinator: true,
-      coordinatorDivision: Division.STOCKING
+      coordinatorDivision: Division.STOCKING,
     };
   }
 
@@ -205,7 +239,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       role: UserRole.CHEF,
       fullName: 'Koordinator Persiapan & Stocking',
       isCoordinator: true,
-      coordinatorDivision: Division.STOCKING
+      coordinatorDivision: Division.STOCKING,
     };
   }
 
@@ -216,7 +250,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       role: UserRole.CHEF,
       fullName: 'Koordinator Masak',
       isCoordinator: true,
-      coordinatorDivision: Division.MASAK
+      coordinatorDivision: Division.MASAK,
     };
   }
 
@@ -227,7 +261,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       role: UserRole.CHEF,
       fullName: 'Koordinator Pemorsian',
       isCoordinator: true,
-      coordinatorDivision: Division.PEMORSIAN
+      coordinatorDivision: Division.PEMORSIAN,
     };
   }
 
@@ -238,7 +272,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       role: UserRole.DRIVER,
       fullName: 'Imam Durori (Driver)',
       isCoordinator: true,
-      coordinatorDivision: Division.DRIVER
+      coordinatorDivision: Division.DRIVER,
     };
   }
 
@@ -249,7 +283,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       role: UserRole.ASLAP,
       fullName: 'Koordinator Cuci Ompreng',
       isCoordinator: true,
-      coordinatorDivision: Division.CUCI
+      coordinatorDivision: Division.CUCI,
     };
   }
 
@@ -260,18 +294,22 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       role: UserRole.ASLAP,
       fullName: 'Koordinator Kebersihan & Sanitasi',
       isCoordinator: true,
-      coordinatorDivision: Division.KEBERSIHAN
+      coordinatorDivision: Division.KEBERSIHAN,
     };
   }
 
-  if (normEmail === 'keamanan@qomaruddin.com' || normEmail === 'kemanan@sppg.com' || normEmail === 'keamanan@sppg.com') {
+  if (
+    normEmail === 'keamanan@qomaruddin.com' ||
+    normEmail === 'kemanan@sppg.com' ||
+    normEmail === 'keamanan@sppg.com'
+  ) {
     return {
       id: uid,
       email,
       role: UserRole.ASLAP,
       fullName: 'Koordinator Keamanan & Utility',
       isCoordinator: true,
-      coordinatorDivision: Division.KEAMANAN
+      coordinatorDivision: Division.KEAMANAN,
     };
   }
 
@@ -281,7 +319,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.ADMIN,
-      fullName: 'Ketua SPPG'
+      fullName: 'Ketua SPPG',
     };
   }
 
@@ -290,7 +328,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.AKUNTAN,
-      fullName: 'Staff Akuntan SPPG'
+      fullName: 'Staff Akuntan SPPG',
     };
   }
 
@@ -299,25 +337,25 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.CHEF,
-      fullName: 'Rizka Aulia (Head Chef)'
+      fullName: 'Rizka Aulia (Head Chef)',
     };
   }
-  
+
   if (normEmail.startsWith('gizi')) {
     return {
       id: uid,
       email,
       role: UserRole.AHLI_GIZI,
-      fullName: 'Avianti Rahma Dianita (Ahli Gizi)'
+      fullName: 'Avianti Rahma Dianita (Ahli Gizi)',
     };
   }
-  
+
   if (normEmail.startsWith('aslap')) {
     return {
       id: uid,
       email,
       role: UserRole.ASLAP,
-      fullName: 'Ahmad Maghfur (Aslap)'
+      fullName: 'Ahmad Maghfur (Aslap)',
     };
   }
 
@@ -325,7 +363,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
   return {
     id: uid,
     email,
-    role: UserRole.ADMIN, // Default to admin for user-created emails to ensure they have all capabilities
-    fullName: email.split('@')[0].toUpperCase() + ' (Staff Dapur)'
+    role: UserRole.ADMIN,
+    fullName: email.split('@')[0].toUpperCase() + ' (Staff Dapur)',
   };
 }
