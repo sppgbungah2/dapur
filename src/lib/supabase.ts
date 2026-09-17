@@ -116,7 +116,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.ADMIN,
-      fullName: 'Ustadz Maghfur Munif (Admin Utama)',
+      fullName: 'Maghfur Munif (Admin Utama)',
     };
   }
   if (normEmail === 'rifkah@qomaruddin.com') {
@@ -124,7 +124,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.ADMIN,
-      fullName: 'Ibu Rifkah (Admin Utama)',
+      fullName: 'Nona Rifkah (Admin Utama)',
     };
   }
   if (normEmail === 'fajar@qomaruddin.com') {
