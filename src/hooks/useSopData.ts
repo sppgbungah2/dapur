@@ -255,10 +255,10 @@ export function useSopData(selectedDate: string, fetchTasks: boolean = false) {
     // Realtime listener replacing continuous polling
     const channel = supabase
       .channel(`sops_realtime_${normalizeDateISO(selectedDate)}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sops' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'dapur_db', table: 'sops' }, () => {
         fetchSopsAndMenus();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'day_menus' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'dapur_db', table: 'day_menus' }, () => {
         fetchSopsAndMenus();
       })
       .subscribe((status) => {
