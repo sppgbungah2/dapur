@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import DailyStockOpnameView from './DailyStockOpnameView';
+import { correctSmaDocumentNumber } from '../utils/docHelpers';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Package, Wrench, ShieldCheck, ShoppingCart, Truck, Calendar, Sparkles,
   Camera, Users, FileText, CheckCircle, Search, AlertCircle, Plus, ClipboardCheck, ArrowRight, FileSpreadsheet,
@@ -15,8 +17,6 @@ import SuratJalanView from './SuratJalanView';
 import OrganoleptikView from './OrganoleptikView';
 import PortionMasterView, { PortionConfig } from './PortionMasterView';
 import AbsensiView from './AbsensiView';
-import IncomingGoodsView from './IncomingGoodsView';
-import StockOpnameView from './StockOpnameView';
 import StockOperasionalView from './StockOperasionalView';
 import DashboardAdminView from './DashboardAdminView';
 
@@ -61,7 +61,7 @@ interface MockModulesProps {
   onSetMenu: (date: string, items: string[]) => void;
   allDayMenus?: DayMenu[];
   onSaveMenu?: (date: string, menuList: string[]) => void;
-  onGenerateSOPs?: (date: string, menuList: string[]) => void;
+  onGenerateSOPs?: (date: string, menuList: string[]) => Promise<{ success: boolean; message: string }>;
   onDeleteMenu?: (date: string) => void;
   currentUserRole?: UserRole;
   loggedInUser?: UserProfile | null;
@@ -2175,7 +2175,12 @@ export default function MockModules({
   }
 
   // Shipping Docs States with LocalStorage synchronization
-  const [shippingDocs, setRawShippingDocs] = useState<ShippingDocItem[]>([]);
+  const [rawShippingDocs, setRawShippingDocs] = useState<ShippingDocItem[]>([]);
+  const shippingDocs = useMemo(() => rawShippingDocs.map(doc => {
+    if (doc.type === 'serah_terima') return { ...doc, bastNo: correctSmaDocumentNumber(doc.bastNo, doc.bastSekolah) };
+    if (doc.type === 'surat_jalan') return { ...doc, sjNo: correctSmaDocumentNumber(doc.sjNo, doc.sjKepada) };
+    return doc;
+  }), [rawShippingDocs]);
 
   const syncShippingDocsToSupabase = async (prev: ShippingDocItem[], next: ShippingDocItem[]) => {
     if (!isSupabaseConfigured || !supabase) return;
@@ -3956,17 +3961,13 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
 
     case 6: { // Kedatangan Barang
       return (
-        <IncomingGoodsView
-          selectedDate={selectedDate || '2026-06-16'}
-          isInitialFetchDone={isInitialFetchDone}
-          kedatanganMap={kedatanganMap}
-          setKedatanganMap={setKedatanganMap}
-          savedReports={savedReports}
-          addSavedReport={addSavedReport}
-          triggerSuccessMsg={triggerSuccessMsg}
-          successMsg={successMsg}
-          isSupabaseConfigured={isSupabaseConfigured}
-        />
+        <div className="space-y-6">
+          <DailyStockOpnameView selectedDate={selectedDate} loggedInUser={loggedInUser} />
+          <details className="rounded-xl border bg-white p-4"><summary className="min-h-11 cursor-pointer font-semibold">Arsip penerimaan lama</summary>
+            <p className="text-sm text-neutral-600 my-3">Arsip ini tidak menambah saldo baru agar penerimaan yang termasuk stok awal tidak terhitung dua kali.</p>
+            {(kedatanganMap[selectedDate] || []).map(item => <p key={item.id} className="border-t py-2 text-sm">{item.name} — {item.qty} {item.uom} · {item.supplier} · {item.checker}</p>)}
+          </details>
+        </div>
       );
     }
 
@@ -4060,7 +4061,7 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
         setLocalSchedItems([...presetItems]);
       };
 
-      const handleLocalSubmitSchedule = () => {
+      const handleLocalSubmitSchedule = async () => {
         if (!localSchedDate) {
           alert('Silakan pilih tanggal terlebih dahulu!');
           return;
@@ -4075,13 +4076,17 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
         }
 
         setIsSavingSched(true);
-        setTimeout(() => {
-          onSaveMenu(localSchedDate, localSchedItems);
-          onGenerateSOPs(localSchedDate, localSchedItems);
-          setIsSavingSched(false);
-          triggerSuccessMsg(`Jadwal Menu & SOP baru untuk tanggal ${localSchedDate} berhasil diterbitkan & diunggah ke database!`);
+        try {
+          await onSaveMenu(localSchedDate, localSchedItems);
+          const result = await onGenerateSOPs(localSchedDate, localSchedItems);
+          if (!result.success) throw new Error(result.message);
+          triggerSuccessMsg(result.message);
           setLocalSchedItems([]);
-        }, 1000);
+        } catch (error: any) {
+          alert(error.message || 'Draft SOP gagal disimpan. Silakan coba lagi.');
+        } finally {
+          setIsSavingSched(false);
+        }
       };
 
       const getIndoDayName = (dateStr: string) => {
@@ -4314,18 +4319,7 @@ INSERT INTO volunteer_complaints (source, category, complaint_text, action_taken
 
     case 12: { // Stock Opname revamping
       return (
-        <StockOpnameView
-          selectedDate={selectedStockDate}
-          isInitialFetchDone={isInitialFetchDone}
-          stockMap={stockMap}
-          setStockMap={setStockMap}
-          kedatanganMap={kedatanganMap}
-          savedReports={savedReports}
-          addSavedReport={addSavedReport}
-          triggerSuccessMsg={triggerSuccessMsg}
-          successMsg={successMsg}
-          isSupabaseConfigured={isSupabaseConfigured}
-        />
+        <DailyStockOpnameView selectedDate={selectedStockDate} loggedInUser={loggedInUser} />
       );
     }
 

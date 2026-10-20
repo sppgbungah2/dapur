@@ -48,7 +48,7 @@ export interface AbsensiSignOff {
 }
 
 const MASTER_RELAVAN: { name: string; role: string }[] = [
-  { name: 'Ahmad Maghfur', role: 'Asisten Lapangan' },
+  { name: 'Dewi Rifkah', role: 'Asisten Lapangan' },
   { name: 'Rizka Aulia', role: 'Chef' },
   { name: 'Mohammad Sholihuddin Nuraini', role: 'Koordinator Distribusi' },
   { name: 'Ahmad Wahyudi', role: 'Distribusi' },
@@ -197,7 +197,7 @@ export default function AbsensiView({ selectedDate, isInitialFetchDone }: Absens
         signer_ketua: signOffData.signerKetua || 'M. Fajrul Falah',
         signature_ketua_url: signOffData.signatureKetuaUrl || null,
         signed_ketua_at: signOffData.signedKetuaAt || null,
-        signer_aslap: signOffData.signerAslap || 'Ahmad Maghfur',
+        signer_aslap: signOffData.signerAslap || 'Dewi Rifkah',
         signature_aslap_url: signOffData.signatureAslapUrl || null,
         signed_aslap_at: signOffData.signedAslapAt || null,
         status: signOffData.status || 'Draft',
@@ -272,7 +272,7 @@ export default function AbsensiView({ selectedDate, isInitialFetchDone }: Absens
               signerKetua: signData.signer_ketua || 'M. Fajrul Falah',
               signatureKetuaUrl: signData.signature_ketua_url || null,
               signedKetuaAt: signData.signed_ketua_at || null,
-              signerAslap: signData.signer_aslap || 'Ahmad Maghfur',
+              signerAslap: signData.signer_aslap || 'Dewi Rifkah',
               signatureAslapUrl: signData.signature_aslap_url || null,
               signedAslapAt: signData.signed_aslap_at || null,
               status: signData.status || 'Draft'
@@ -369,7 +369,7 @@ export default function AbsensiView({ selectedDate, isInitialFetchDone }: Absens
           signerKetua: 'M. Fajrul Falah',
           signatureKetuaUrl: null,
           signedKetuaAt: null,
-          signerAslap: 'Ahmad Maghfur',
+          signerAslap: 'Dewi Rifkah',
           signatureAslapUrl: null,
           signedAslapAt: null,
           status: 'Draft'
@@ -384,7 +384,7 @@ export default function AbsensiView({ selectedDate, isInitialFetchDone }: Absens
     signerKetua: 'M. Fajrul Falah',
     signatureKetuaUrl: null,
     signedKetuaAt: null,
-    signerAslap: 'Ahmad Maghfur',
+    signerAslap: 'Dewi Rifkah',
     signatureAslapUrl: null,
     signedAslapAt: null,
     status: 'Draft'
@@ -854,7 +854,7 @@ export default function AbsensiView({ selectedDate, isInitialFetchDone }: Absens
                   type="button"
                   onClick={() => setActiveSigRequest({
                     title: 'Tanda Tangan Validasi Lapangan (Aslap)',
-                    suggestedName: 'Ahmad Maghfur',
+                    suggestedName: 'Dewi Rifkah',
                     targetField: 'absensiAslap'
                   })}
                   className="text-neutral-400 hover:text-emerald-800 text-[10px] font-bold py-2 px-4 border border-dashed border-neutral-300 hover:border-emerald-700 bg-white rounded transition-all cursor-pointer"
@@ -865,7 +865,7 @@ export default function AbsensiView({ selectedDate, isInitialFetchDone }: Absens
             </div>
 
             <div className="text-center">
-              <p className="font-extrabold text-xs text-neutral-800 underline">Ahmad Maghfur</p>
+              <p className="font-extrabold text-xs text-neutral-800 underline">Dewi Rifkah</p>
               <p className="text-[9px] text-neutral-400 mt-0.5">{signOff.signedAslapAt ? `Ditandatangani: ${signOff.signedAslapAt}` : 'Belum Ditandatangani'}</p>
             </div>
           </div>
@@ -1030,7 +1030,7 @@ export default function AbsensiView({ selectedDate, isInitialFetchDone }: Absens
                         <div className="text-[10px] text-neutral-300 italic">Belum Ditandatangan</div>
                       )}
                     </div>
-                    <p className="font-extrabold text-xs text-neutral-800 underline">Ahmad Maghfur</p>
+                    <p className="font-extrabold text-xs text-neutral-800 underline">Dewi Rifkah</p>
                     <p className="text-[9px] text-neutral-400">{signOff.signedAslapAt ? `Waktu: ${signOff.signedAslapAt}` : ''}</p>
                   </div>
                   <div className="text-center space-y-2">
@@ -1325,7 +1325,7 @@ export default function AbsensiView({ selectedDate, isInitialFetchDone }: Absens
                         <div className="text-xs text-neutral-300 italic">Belum TTD Harian</div>
                       )}
                     </div>
-                    <p className="font-extrabold text-xs text-neutral-800 underline">Ahmad Maghfur</p>
+                    <p className="font-extrabold text-xs text-neutral-800 underline">Dewi Rifkah</p>
                   </div>
 
                   <div className="text-center">

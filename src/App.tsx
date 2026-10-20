@@ -45,7 +45,7 @@ export default function App() {
   const [activeSopDateView, setActiveSopDateView] = useState<string | null>(null);
 
   const {
-    sops,
+    sops: allSops,
     setSops,
     dayMenus,
     setDayMenus,
@@ -58,6 +58,10 @@ export default function App() {
     handleGenerateSOPs,
     handleDeleteSOP
   } = useSopData(selectedDate, activeSopDateView !== null || activeSopDetail !== null || !!loggedInUser?.isCoordinator);
+
+  const canManageSopDrafts = loggedInUser?.role === UserRole.ADMIN ||
+    ['maghfurmunif@gmail.com', 'punkysme@gmail.com'].includes(loggedInUser?.email?.toLowerCase() || '');
+  const sops = canManageSopDrafts ? allSops : allSops.filter(s => s.status !== 'draft');
 
   const [currentUserRole, setCurrentUserRole] = useState<UserRole>(UserRole.ADMIN);
   const [currentUsername, setCurrentUsername] = useState<string>('Sistem Administrator');
@@ -334,7 +338,7 @@ export default function App() {
         setCurrentUsername('Avianti Rahma Dianita');
         break;
       case UserRole.ASLAP:
-        setCurrentUsername('Ahmad Maghfur (Aslap)');
+        setCurrentUsername('Dewi Rifkah (Aslap)');
         break;
       case UserRole.ADMIN:
         setCurrentUsername('Admin Utama SPPG');
@@ -430,7 +434,7 @@ export default function App() {
       Object.values(Division).forEach((div) => {
         const creatorInfo = DIVISION_CREATOR_MAP[div];
         const supervisorName = creatorInfo.role === UserRole.CHEF ? 'Rizka Aulia' :
-                              creatorInfo.role === UserRole.AHLI_GIZI ? 'Avianti Rahma Dianita' : 'Ahmad Maghfur';
+                              creatorInfo.role === UserRole.AHLI_GIZI ? 'Avianti Rahma Dianita' : 'Dewi Rifkah';
         
         const sopId = `2026-06-15-${div}`;
         const targetTable = getSopTaskTableName(div);
@@ -472,7 +476,7 @@ export default function App() {
       Object.values(Division).forEach((div) => {
         const creatorInfo = DIVISION_CREATOR_MAP[div];
         const supervisorName = creatorInfo.role === UserRole.CHEF ? 'Rizka Aulia' :
-                              creatorInfo.role === UserRole.AHLI_GIZI ? 'Avianti Rahma Dianita' : 'Ahmad Maghfur';
+                              creatorInfo.role === UserRole.AHLI_GIZI ? 'Avianti Rahma Dianita' : 'Dewi Rifkah';
         
         const sopId = `2026-06-16-${div}`;
         const targetTable = getSopTaskTableName(div);
@@ -534,6 +538,8 @@ export default function App() {
       const updatedSop = sops.find(s => s.id === activeSopDetail.id);
       if (updatedSop && JSON.stringify(updatedSop) !== JSON.stringify(activeSopDetail)) {
         setActiveSopDetail(updatedSop);
+      } else if (!updatedSop && !canManageSopDrafts) {
+        setActiveSopDetail(null);
       }
     }
   }, [sops]);
@@ -630,12 +636,12 @@ export default function App() {
     return sops.filter(s => s.date === selectedDate);
   };
 
-  const syncMenuFromSchedule = (date: string, items: string[]) => {
-    // Allows schedule tab to write back to our database
-    handleSaveMenu(date, items);
-    handleGenerateSOPs(date);
+  const syncMenuFromSchedule = async (date: string, items: string[]) => {
+    await handleSaveMenu(date, items);
+    const result = await handleGenerateSOPs(date, items);
+    if (!result.success) { alert(result.message); return; }
     setSelectedDate(date);
-    setCurrentSubTab('dashboard');
+    setActiveTab(15);
   };
 
   // List of all capabilities
@@ -687,11 +693,11 @@ export default function App() {
         // 3. TIM UTAMA
         if (email === 'chef@qomaruddin.com') {
           // SOP Digital, Menu Harian, Order Alat/Operasional, Keluhan
-          return FEATURE_MENUS.filter(menu => [15, 10, 4, 5, 14].includes(menu.num));
+          return FEATURE_MENUS.filter(menu => [15, 10, 12, 4, 5, 14].includes(menu.num));
         }
         if (email === 'gizi@qomaruddin.com') {
           // SOP Harian, Menu Harian Gizi, Order Alat/Operasional, Dokumentasi Pengiriman Ompreng, Keluhan
-          return FEATURE_MENUS.filter(menu => [15, 10, 4, 5, 18, 14].includes(menu.num));
+          return FEATURE_MENUS.filter(menu => [15, 10, 12, 4, 5, 18, 14].includes(menu.num));
         }
         if (email === 'akuntan@qomaruddin.com') {
           // Stock Opname, Stock Operasional, Order Operasional, Kedatangan Barang, Galeri Kedatangan Barang
@@ -700,7 +706,7 @@ export default function App() {
 
         // 4. DIVISI (SOP Harian, Menu Harian Gizi, Order Alat/Operasional, Keluhan)
         if (['stocking@qomaruddin.com', 'masak@qomaruddin.com', 'pemorsian@qomaruddin.com', 'cuci@qomaruddin.com', 'kebersihan@qomaruddin.com', 'keamanan@qomaruddin.com'].includes(email)) {
-          return FEATURE_MENUS.filter(menu => [15, 10, 4, 5, 14].includes(menu.num));
+          return FEATURE_MENUS.filter(menu => [15, 10, 12, 4, 5, 14].includes(menu.num));
         }
 
         // 5. DRIVER
@@ -717,7 +723,7 @@ export default function App() {
         } else if (role === UserRole.DRIVER) {
           return FEATURE_MENUS.filter(menu => [15, 14, 18, 19, 21].includes(menu.num));
         } else if (loggedInUser.isCoordinator) {
-          return FEATURE_MENUS.filter(menu => [15, 14, 4, 5, 16, 17].includes(menu.num));
+          return FEATURE_MENUS.filter(menu => [15, 12, 14, 4, 5, 16, 17].includes(menu.num));
         }
 
         return FEATURE_MENUS;
@@ -980,18 +986,26 @@ export default function App() {
             />
           ) : (
             <>
+            {sopError && (
+              <div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                {sopError}
+                <button type="button" onClick={() => void fetchSopsAndMenus()} className="ml-3 underline font-bold">Coba muat ulang</button>
+              </div>
+            )}
             {!isPrimaryAdmin && (
               <DocumentDatePicker selectedDate={selectedDate} onSelectDate={(date) => { setSelectedDate(date); setActiveSopDetail(null); setActiveSopDateView(null); }} />
             )}
-            {activeSopDetail ? (
+            {activeSopDetail && (canManageSopDrafts || activeSopDetail.status !== 'draft') ? (
             /* Render Full-depth checklist printed form sheet */
             <SOPChecklistView
+              key={activeSopDetail.id}
               sop={activeSopDetail}
               menuList={getMenuForSelectedDate()?.menuList || []}
               currentUserRole={currentUserRole}
               currentUsername={currentUsername}
               onUpdateSOP={handleUpdateSOP}
               onBack={() => setActiveSopDetail(null)}
+              onReload={fetchSopsAndMenus}
               isCoordinator={loggedInUser?.isCoordinator}
               loggedInUser={loggedInUser}
               onSaveSopsToCloud={handleSaveSopsToCloud}
@@ -1137,14 +1151,14 @@ export default function App() {
                           <h4 className="text-neutral-700 font-bold text-sm">SOP Dapur Belum Dipublikasikan</h4>
                         </div>
                         <button
-                          onClick={() => {
-                            const defaultList = ['Nasi Putih', 'Krawu Ayam Bungah', 'Tempe Goreng Ketumbar', 'Kupasan Timun Segar', 'Sambal Serundeng kelapa', 'Pisang'];
-                            handleSaveMenu(selectedDate, defaultList);
-                            handleGenerateSOPs(selectedDate);
+                          disabled={loadingSops || syncStatus === 'saving' || !canManageSopDrafts}
+                          onClick={async () => {
+                            const result = await handleGenerateSOPs(selectedDate);
+                            if (!result.success) alert(result.message);
                           }}
                           className="bg-emerald-800 hover:bg-emerald-950 text-white text-xs font-bold px-5 py-2.5 rounded-xl text-center inline-block"
                         >
-                          + Instant Masukkan Template SOP
+                          + Generate Draft dari Template
                         </button>
                       </div>
                     ) : (
@@ -1174,7 +1188,7 @@ export default function App() {
                                       ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                                       : 'bg-amber-50 text-amber-800 border-amber-200'
                                   }`}>
-                                    {sop.status === 'selesai' ? 'TERKUNCI' : 'AKTIF'}
+                                    {sop.status === 'selesai' ? 'TERKUNCI' : sop.status === 'draft' ? 'DRAFT' : 'TERBIT'}
                                   </span>
                                 </div>
 

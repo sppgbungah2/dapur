@@ -12,7 +12,7 @@ export const DELIVERY_TARGETS = [
 ] as const;
 
 /** Penanggung jawab Dapur untuk seluruh Surat Jalan. Bukan driver pengiriman. */
-export const PRIMARY_ASLAP_NAME = 'Ahmad Maghfur';
+export const PRIMARY_ASLAP_NAME = 'Dewi Rifkah';
 
 type PortionEntry = { label: string; count: number };
 

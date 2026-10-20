@@ -20,7 +20,7 @@ interface DailyReportPDFProps {
 
 // Master Roster of 47 Volunteers & Kitchen Staff
 const MASTER_47_RELAVAN: { name: string; role: string; defaultCheckIn: string; defaultNotes: string }[] = [
-  { name: 'Ahmad Maghfur', role: 'Asisten Lapangan', defaultCheckIn: '04:00', defaultNotes: 'Koordinasi kesiapan dapur utama & penerimaan bahan baku' },
+  { name: 'Dewi Rifkah', role: 'Asisten Lapangan', defaultCheckIn: '04:00', defaultNotes: 'Koordinasi kesiapan dapur utama & penerimaan bahan baku' },
   { name: 'Rizka Aulia', role: 'Chef / Head Kitchen', defaultCheckIn: '04:15', defaultNotes: 'Pengolahan sup gizi & pengawasan rasa masakan' },
   { name: 'Mohammad Sholihuddin Nuraini', role: 'Koordinator Distribusi', defaultCheckIn: '04:30', defaultNotes: 'Pelepasan armada thermo box ke sekolah penerima' },
   { name: 'Ahmad Wahyudi', role: 'Distribusi / Driver', defaultCheckIn: '05:00', defaultNotes: 'Pengantaran termos nasi & lauk MA Assa\'adah & MTS II' },
@@ -1118,7 +1118,7 @@ export default function DailyReportPDF({
                   Suhu penyajian berada di atas batas kritis keamanan pangan (60° Celcius) untuk mencegah perkembangbiakan bakteri patogen berbahaya.
                 </p>
                 <div className="pt-1 text-[10px] text-neutral-500 italic">
-                  Panelis Penguji: <strong>Ahli Gizi Ibu Ina Mariana, S.Gz & Aslap Ahmad Maghfur</strong>
+                  Panelis Penguji: <strong>Ahli Gizi Ibu Ina Mariana, S.Gz & Aslap Dewi Rifkah</strong>
                 </div>
               </div>
             </div>
@@ -1270,7 +1270,7 @@ export default function DailyReportPDF({
               <p className="font-extrabold text-neutral-900">SPPG Bungah 2</p>
             </div>
             <div className="space-y-1">
-              <strong className="block border-b border-neutral-400 pb-1 mx-6 text-neutral-900 font-bold">Ahmad Maghfur</strong>
+              <strong className="block border-b border-neutral-400 pb-1 mx-6 text-neutral-900 font-bold">Dewi Rifkah</strong>
               <span className="text-[10px] text-neutral-500 block font-mono">Aslap Dapur Utama</span>
             </div>
           </div>

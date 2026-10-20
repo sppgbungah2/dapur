@@ -441,7 +441,7 @@ export default function FullDocumentBundlePDF({
                 ) : (
                   <div className="h-14 border border-dashed border-neutral-300 rounded flex items-center justify-center text-[10px] text-neutral-400">Berttd Digital</div>
                 )}
-                <p className="font-bold border-t border-neutral-400 pt-1 mx-8">{sopDoc.signerSupervisor || 'Ahmad Maghfur'}</p>
+                <p className="font-bold border-t border-neutral-400 pt-1 mx-8">{sopDoc.signerSupervisor || 'Dewi Rifkah'}</p>
               </div>
             </div>
           </div>

@@ -20,9 +20,9 @@ export function getDefaultReceiptTime(sch: string): string {
 
 export function generateAbbrev(sch: string): string {
   const upper = sch.toUpperCase();
-  if (upper.includes('MA')) return 'MA_ASS';
   if (upper.includes('MTS')) return 'MTS_ASS';
   if (upper.includes('SMA')) return 'SMA_ASS';
+  if (upper.includes('MA')) return 'MA_ASS';
   if (upper.includes('SMK')) return 'SMK_ASS';
   if (upper.includes('SUKOWATI')) return 'DS_SKW';
   if (upper.includes('SIDOKUMPUL')) return 'DS_SDK';
@@ -166,4 +166,9 @@ export function createAllInitialShippingDocsForDate(
 
   if (newDocsCreated.length === 0) return currentDocs;
   return [...newDocsCreated, ...currentDocs];
+}
+
+export function correctSmaDocumentNumber(number: string | undefined, target: string | undefined): string | undefined {
+  if (!/\bSMA\b/i.test(target || '')) return number;
+  return number?.replace(/\/MA(?=_ASS\/|\/)/, '/SMA');
 }

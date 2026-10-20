@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { hasSopEdits } from '../lib/sopPersistence';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ArrowLeft, Printer, Download, Plus, Check, Save, Clock, HelpCircle, UserCheck, Trash2, CheckCircle2, RefreshCw, AlertCircle, CloudCheck, Cloud
 } from 'lucide-react';
@@ -6,28 +7,52 @@ import { SOPDocument, Division, UserRole } from '../types';
 import SignaturePad from './SignaturePad';
 
 interface SOPChecklistViewProps {
+  key?: string;
   sop: SOPDocument;
   menuList: string[];
   currentUserRole: UserRole;
   currentUsername: string;
   onUpdateSOP: (updatedSOP: SOPDocument) => Promise<{ success: boolean; error?: string }> | any;
   onBack: () => void;
+  onReload?: () => Promise<void>;
   isCoordinator?: boolean;
   loggedInUser?: any;
   onSaveSopsToCloud?: (date?: string) => Promise<{ success: boolean; message: string }>;
 }
 
 export default function SOPChecklistView({ 
-  sop, 
+  sop: savedSop,
   menuList, 
   currentUserRole, 
   currentUsername, 
   onUpdateSOP, 
   onBack,
+  onReload,
   isCoordinator = false,
   loggedInUser = null,
   onSaveSopsToCloud
 }: SOPChecklistViewProps) {
+  const draftKey = `sop_editor_${loggedInUser?.id || currentUsername}_${savedSop.id}`;
+  const [recoveredDraft] = useState<SOPDocument | null>(() => {
+    try {
+      const draft = JSON.parse(sessionStorage.getItem(draftKey) || 'null');
+      return draft?.id === savedSop.id && Array.isArray(draft.tasks) ? draft : null;
+    } catch { return null; }
+  });
+  const [sop, setSop] = useState(recoveredDraft || savedSop);
+  const [dirty, setDirty] = useState(!!recoveredDraft);
+  const dirtyRef = useRef(!!recoveredDraft);
+  const savingRef = useRef(false);
+  useEffect(() => {
+    if (!dirtyRef.current && !savingRef.current) setSop(savedSop);
+  }, [savedSop, dirty]);
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (dirtyRef.current || savingRef.current) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, []);
   const isAdmin = loggedInUser?.email === 'maghfurmunif@gmail.com' || loggedInUser?.email === 'punkysme@gmail.com' || currentUserRole === UserRole.ADMIN || loggedInUser?.role === UserRole.ADMIN;
   const isLocked = sop.isLocked === true || sop.status === 'selesai';
   const [activeSignType, setActiveSignType] = useState<'supervisor' | 'coordinator' | null>(null);
@@ -40,23 +65,57 @@ export default function SOPChecklistView({
   const [lastSavedTime, setLastSavedTime] = useState<string>('');
   const [syncErrorMessage, setSyncErrorMessage] = useState<string>('');
 
-  const triggerSOPUpdate = async (updatedSOP: SOPDocument) => {
+  const triggerSOPUpdate = (updated: SOPDocument) => {
+    if (savingRef.current || isLocked) return;
+    setSop(updated);
+    try { sessionStorage.setItem(draftKey, JSON.stringify(updated)); } catch { /* Keep the editor copy if browser storage is full. */ }
+    dirtyRef.current = true;
+    setDirty(true);
+    setSyncErrorMessage('');
+  };
+
+  const saveChanges = async (updated = sop) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSyncStatus('saving');
     try {
-      const res = await onUpdateSOP(updatedSOP);
-      if (res && res.success === false) {
-        setSyncStatus('error');
-        setSyncErrorMessage(res.error || 'Gagal menyimpan ke Cloud Supabase');
-      } else {
-        setSyncStatus('saved');
-        const now = new Date();
-        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} WIB`;
-        setLastSavedTime(timeStr);
-      }
-    } catch (err: any) {
+      const result = await onUpdateSOP(updated);
+      if (!result?.success) throw new Error(result?.error || 'Gagal menyimpan SOP. Silakan coba lagi.');
+      setSop(result.sop || updated);
+      try { sessionStorage.removeItem(draftKey); } catch { /* The saved cloud copy remains available. */ }
+      dirtyRef.current = false;
+      setDirty(false);
+      setSyncStatus('saved');
+      setLastSavedTime(new Date().toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' }));
+      setSyncErrorMessage('');
+    } catch (error: any) {
       setSyncStatus('error');
-      setSyncErrorMessage(err?.message || 'Error koneksi Cloud');
+      setSyncErrorMessage(error.message);
+    } finally {
+      savingRef.current = false;
     }
+  };
+
+  const publishSop = () => {
+    if (!isAdmin || !(sop.adminEdited || hasSopEdits(sop, menuList))) return;
+    void saveChanges({ ...sop, status: 'aktif' });
+  };
+
+  const handleBack = () => {
+    if (savingRef.current) return;
+    if (dirty && !confirm('Perubahan belum tersimpan ke server. Salinan edit tetap tersimpan di tab ini. Kembali ke daftar?')) return;
+    onBack();
+  };
+
+  const reloadServerVersion = async () => {
+    if (!confirm('Buang edit lokal dan muat versi server? Salin instruksi yang masih ingin dipertahankan terlebih dahulu.')) return;
+    try { sessionStorage.removeItem(draftKey); } catch {}
+    dirtyRef.current = false;
+    setDirty(false);
+    setSyncErrorMessage('');
+    setSyncStatus('saved');
+    setSop(savedSop);
+    await onReload?.();
   };
 
   const handleToggleTask = (taskId: string) => {
@@ -72,7 +131,7 @@ export default function SOPChecklistView({
       ...sop,
       tasks: updatedTasks,
       isCheckedAll,
-      updatedAt: new Date().toISOString()
+      updatedAt: sop.updatedAt
     });
   };
 
@@ -82,10 +141,10 @@ export default function SOPChecklistView({
       alert('Hanya Admin Utama yang berhak menambah atau mengubah butir SOP!');
       return;
     }
-    if (!newTaskText.trim() || isLocked) return;
+    if (!newTaskText.trim() || isLocked || savingRef.current) return;
 
     const newTask = {
-      id: `task-${sop.id}-${Date.now()}`,
+      id: `task-${crypto.randomUUID()}`,
       text: newTaskText.trim(),
       completed: false,
       category: newTaskCategory
@@ -93,9 +152,10 @@ export default function SOPChecklistView({
 
     triggerSOPUpdate({
       ...sop,
+      status: 'draft',
       tasks: [...sop.tasks, newTask],
       isCheckedAll: false,
-      updatedAt: new Date().toISOString()
+      updatedAt: sop.updatedAt
     });
 
     setNewTaskText('');
@@ -113,13 +173,15 @@ export default function SOPChecklistView({
     
     triggerSOPUpdate({
       ...sop,
+      status: 'draft',
       tasks: updatedTasks,
       isCheckedAll,
-      updatedAt: new Date().toISOString()
+      updatedAt: sop.updatedAt
     });
   };
 
   const handleOpenSignaturePad = (type: 'supervisor' | 'coordinator') => {
+    if (sop.status === 'draft' || isLocked || savingRef.current) return;
     setActiveSignType(type);
   };
 
@@ -141,7 +203,7 @@ export default function SOPChecklistView({
         signatureSupervisorUrl: dataUrl,
         signedSupervisorAt: timestamp,
         signerSupervisor: currentUsername || sop.signerSupervisor,
-        updatedAt: new Date().toISOString()
+        updatedAt: sop.updatedAt
       });
     } else if (activeSignType === 'coordinator') {
       triggerSOPUpdate({
@@ -149,7 +211,7 @@ export default function SOPChecklistView({
         signatureCoordinatorUrl: dataUrl,
         signedCoordinatorAt: timestamp,
         signerCoordinator: currentUsername || sop.signerCoordinator,
-        updatedAt: new Date().toISOString()
+        updatedAt: sop.updatedAt
       });
     }
     
@@ -163,10 +225,10 @@ export default function SOPChecklistView({
     }
 
     if (confirm('Apakah Anda yakin ingin mengunci SOP ini? Berkas yang dikunci akan direkap permanen dan tidak dapat diedit kembali.')) {
-      triggerSOPUpdate({
+      void saveChanges({
         ...sop,
         status: 'selesai',
-        updatedAt: new Date().toISOString()
+        updatedAt: sop.updatedAt
       });
     }
   };
@@ -239,26 +301,7 @@ export default function SOPChecklistView({
     }
   };
 
-  const handleManualCloudSave = async () => {
-    if (onSaveSopsToCloud) {
-      setSyncStatus('saving');
-      try {
-        const res = await onSaveSopsToCloud(sop.date);
-        if (res.success) {
-          setSyncStatus('saved');
-          setLastSavedTime(new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }));
-        } else {
-          setSyncStatus('error');
-          setSyncErrorMessage(res.message);
-        }
-      } catch (e: any) {
-        setSyncStatus('error');
-        setSyncErrorMessage(e?.message || 'Gagal tersambung');
-      }
-    } else {
-      triggerSOPUpdate(sop);
-    }
-  };
+  const handleManualCloudSave = () => { void saveChanges(); };
 
   return (
     <div className="space-y-6">
@@ -271,7 +314,7 @@ export default function SOPChecklistView({
           </div>
         ) : (
           <button
-            onClick={onBack}
+            onClick={handleBack}
             className="flex items-center gap-2 text-sm text-neutral-600 hover:text-neutral-900 font-semibold transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -283,12 +326,20 @@ export default function SOPChecklistView({
           <button
             type="button"
             onClick={handleManualCloudSave}
-            className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-            title="Simpan & Sinkronkan Seluruh Tugas SOP Ini Langsung ke Cloud Supabase"
+            className="min-h-11 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+            disabled={syncStatus === 'saving' || isLocked}
+            title="Simpan perubahan SOP divisi ini"
           >
             <Cloud className="h-4 w-4" />
-            SIMPAN SOP KE CLOUD
+            {syncStatus === 'saving' ? 'MENYIMPAN...' : sop.status === 'draft' ? 'SIMPAN DRAFT' : 'SIMPAN PERUBAHAN'}
           </button>
+          {isAdmin && sop.status === 'draft' && (
+            <button type="button" onClick={publishSop}
+              disabled={syncStatus === 'saving' || isLocked || !(sop.adminEdited || hasSopEdits(sop, menuList))}
+              className="min-h-11 px-4 rounded-xl bg-emerald-800 text-white text-xs font-bold disabled:opacity-50">
+              TERBITKAN SOP
+            </button>
+          )}
           <button
             onClick={handlePrint}
             className="bg-white border border-neutral-200 hover:bg-neutral-50 px-3.5 py-1.5 rounded-xl text-xs font-bold text-neutral-700 flex items-center gap-1.5 transition-all shadow-xs"
@@ -305,10 +356,10 @@ export default function SOPChecklistView({
             {isExporting ? 'Mengekspor...' : 'Unduh Digital Log'}
           </button>
           
-          {sop.status !== 'selesai' && (
+          {sop.status === 'aktif' && (
             <button
               onClick={handleFinalizeSOP}
-              disabled={!sop.signatureSupervisorUrl || !sop.signatureCoordinatorUrl}
+              disabled={syncStatus === 'saving' || !sop.signatureSupervisorUrl || !sop.signatureCoordinatorUrl}
               className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-md ${
                 sop.signatureSupervisorUrl && sop.signatureCoordinatorUrl
                   ? 'bg-emerald-800 hover:bg-emerald-900 text-white cursor-pointer'
@@ -322,6 +373,12 @@ export default function SOPChecklistView({
         </div>
       </div>
 
+      {sop.status === 'draft' && (
+        <p className="no-print rounded-xl bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
+          Draft: edit instruksi template, simpan draft, lalu terbitkan setelah siap. Koordinator belum dapat membuka draft ini.
+        </p>
+      )}
+      {dirty && <p role="status" className="no-print text-sm font-semibold text-amber-800">Ada perubahan yang belum disimpan.</p>}
       {/* Real-time Cloud Save Status Banner */}
       <div className="no-print flex items-center justify-between bg-white border border-neutral-200 rounded-2xl px-4 py-2.5 shadow-xs">
         <div className="flex items-center gap-2 text-xs">
@@ -331,7 +388,7 @@ export default function SOPChecklistView({
               <span>Menyimpan perubahan SOP ke Cloud Supabase...</span>
             </div>
           )}
-          {syncStatus === 'saved' && (
+          {syncStatus === 'saved' && !dirty && (
             <div className="flex items-center gap-2 text-emerald-800 font-semibold">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
               <span>
@@ -341,9 +398,12 @@ export default function SOPChecklistView({
             </div>
           )}
           {syncStatus === 'error' && (
-            <div className="flex items-center gap-2 text-rose-700 font-semibold">
+            <div role="alert" className="flex flex-wrap items-center gap-2 text-rose-700 font-semibold">
               <AlertCircle className="h-4 w-4 text-rose-600" />
               <span>Gagal menyimpan ke Cloud: {syncErrorMessage || 'Periksa koneksi internet'}</span>
+              <button type="button" onClick={reloadServerVersion} className="min-h-11 underline">
+                Muat ulang versi server
+              </button>
             </div>
           )}
         </div>
@@ -362,7 +422,7 @@ export default function SOPChecklistView({
         </div>
       )}
 
-      {sop.status !== 'selesai' && (!sop.signatureSupervisorUrl || !sop.signatureCoordinatorUrl) && (
+      {sop.status === 'aktif' && (!sop.signatureSupervisorUrl || !sop.signatureCoordinatorUrl) && (
         <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl text-xs flex items-center gap-2.5 no-print">
           <Clock className="h-5 w-5 text-amber-700 shrink-0" />
           <span>
@@ -375,7 +435,7 @@ export default function SOPChecklistView({
       <div className="print-area print-container bg-white border border-neutral-300 shadow-lg max-w-3xl mx-auto rounded-none p-4 xs:p-5 sm:p-8 md:p-12 font-serif text-neutral-900 leading-relaxed relative overflow-x-auto sm:overflow-visible">
         {/* Paper Watermark for authentic printing feel */}
         <div className="absolute top-2 right-4 text-[9px] font-mono tracking-widest text-neutral-300 no-print">
-          ID BERKAS: {sop.id} / {sop.status === 'selesai' ? 'VERIFIED' : 'ACTIVE_LOG'}
+          ID BERKAS: {sop.id} / {sop.status === 'selesai' ? 'VERIFIED' : sop.status === 'draft' ? 'DRAFT' : 'ACTIVE_LOG'}
         </div>
 
         {/* Paper Header */}
@@ -462,18 +522,26 @@ export default function SOPChecklistView({
                             type="checkbox"
                             checked={task.completed}
                             onChange={() => handleToggleTask(task.id)}
-                            disabled={isLocked}
+                            disabled={sop.status === 'draft' || isLocked || syncStatus === 'saving'}
                             className="mt-0.5 h-4.5 w-4.5 accent-emerald-800 rounded-sm border-neutral-300 focus:ring-emerald-500 shrink-0 cursor-pointer disabled:cursor-not-allowed"
                           />
                           <div className="flex-1 flex justify-between gap-2 min-w-0">
-                            <span className={`text-[12.5px] font-medium leading-relaxed font-sans whitespace-normal break-words block flex-1 ${task.completed ? 'line-through text-neutral-400 font-normal' : 'text-neutral-800'}`}>
-                              {task.text}
-                            </span>
-                            {sop.status !== 'selesai' && isAdmin && (
+                            {isAdmin && !isLocked ? (
+                              <textarea aria-label={`Instruksi ${task.category}`} value={task.text}
+                                disabled={syncStatus === 'saving'} rows={3}
+                                onChange={event => triggerSOPUpdate({ ...sop, status: 'draft', tasks: sop.tasks.map(t => t.id === task.id ? { ...t, text: event.target.value } : t) })}
+                                className="flex-1 min-w-0 rounded border border-neutral-300 p-2 text-sm focus:ring-2 focus:ring-emerald-600" />
+                            ) : (
+                              <span className={`text-[12.5px] font-medium leading-relaxed font-sans whitespace-normal break-words block flex-1 ${task.completed ? 'line-through text-neutral-400 font-normal' : 'text-neutral-800'}`}>
+                                {task.text}
+                              </span>
+                            )}
+                            {!isLocked && isAdmin && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteTask(task.id)}
-                                className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 h-5 w-5 no-print shrink-0"
+                                disabled={syncStatus === 'saving'}
+                                className="text-red-600 hover:text-red-800 p-2 min-h-11 min-w-11 no-print shrink-0"
                                 title="Hapus Butir SOP (Khusus Admin Utama)"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -497,18 +565,26 @@ export default function SOPChecklistView({
                             type="checkbox"
                             checked={task.completed}
                             onChange={() => handleToggleTask(task.id)}
-                            disabled={isLocked}
+                            disabled={sop.status === 'draft' || isLocked || syncStatus === 'saving'}
                             className="mt-0.5 h-4.5 w-4.5 accent-emerald-800 rounded-sm border-neutral-300 focus:ring-emerald-500 shrink-0 cursor-pointer disabled:cursor-not-allowed"
                           />
                           <div className="flex-1 flex justify-between gap-2 min-w-0">
-                            <span className={`text-[12.5px] font-medium leading-relaxed font-sans whitespace-normal break-words block flex-1 ${task.completed ? 'line-through text-neutral-400 font-normal' : 'text-neutral-800'}`}>
-                              {task.text}
-                            </span>
-                            {sop.status !== 'selesai' && isAdmin && (
+                            {isAdmin && !isLocked ? (
+                              <textarea aria-label={`Instruksi ${task.category}`} value={task.text}
+                                disabled={syncStatus === 'saving'} rows={3}
+                                onChange={event => triggerSOPUpdate({ ...sop, status: 'draft', tasks: sop.tasks.map(t => t.id === task.id ? { ...t, text: event.target.value } : t) })}
+                                className="flex-1 min-w-0 rounded border border-neutral-300 p-2 text-sm focus:ring-2 focus:ring-emerald-600" />
+                            ) : (
+                              <span className={`text-[12.5px] font-medium leading-relaxed font-sans whitespace-normal break-words block flex-1 ${task.completed ? 'line-through text-neutral-400 font-normal' : 'text-neutral-800'}`}>
+                                {task.text}
+                              </span>
+                            )}
+                            {!isLocked && isAdmin && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteTask(task.id)}
-                                className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 h-5 w-5 no-print shrink-0"
+                                disabled={syncStatus === 'saving'}
+                                className="text-red-600 hover:text-red-800 p-2 min-h-11 min-w-11 no-print shrink-0"
                                 title="Hapus Butir SOP (Khusus Admin Utama)"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -532,18 +608,26 @@ export default function SOPChecklistView({
                             type="checkbox"
                             checked={task.completed}
                             onChange={() => handleToggleTask(task.id)}
-                            disabled={isLocked}
+                            disabled={sop.status === 'draft' || isLocked || syncStatus === 'saving'}
                             className="mt-0.5 h-4.5 w-4.5 accent-emerald-800 rounded-sm border-neutral-300 focus:ring-emerald-500 shrink-0 cursor-pointer disabled:cursor-not-allowed"
                           />
                           <div className="flex-1 flex justify-between gap-2 min-w-0">
-                            <span className={`text-[12.5px] font-medium leading-relaxed font-sans whitespace-normal break-words block flex-1 ${task.completed ? 'line-through text-neutral-400 font-normal' : 'text-neutral-800'}`}>
-                              {task.text}
-                            </span>
-                            {sop.status !== 'selesai' && isAdmin && (
+                            {isAdmin && !isLocked ? (
+                              <textarea aria-label={`Instruksi ${task.category}`} value={task.text}
+                                disabled={syncStatus === 'saving'} rows={3}
+                                onChange={event => triggerSOPUpdate({ ...sop, status: 'draft', tasks: sop.tasks.map(t => t.id === task.id ? { ...t, text: event.target.value } : t) })}
+                                className="flex-1 min-w-0 rounded border border-neutral-300 p-2 text-sm focus:ring-2 focus:ring-emerald-600" />
+                            ) : (
+                              <span className={`text-[12.5px] font-medium leading-relaxed font-sans whitespace-normal break-words block flex-1 ${task.completed ? 'line-through text-neutral-400 font-normal' : 'text-neutral-800'}`}>
+                                {task.text}
+                              </span>
+                            )}
+                            {!isLocked && isAdmin && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteTask(task.id)}
-                                className="text-red-500 hover:text-red-700 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 h-5 w-5 no-print shrink-0"
+                                disabled={syncStatus === 'saving'}
+                                className="text-red-600 hover:text-red-800 p-2 min-h-11 min-w-11 no-print shrink-0"
                                 title="Hapus Butir SOP (Khusus Admin Utama)"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -557,7 +641,7 @@ export default function SOPChecklistView({
                 </div>
 
                 {/* Inline Task Adder form (Only when document is active and user is Admin Utama) */}
-                {sop.status !== 'selesai' && (
+                {!isLocked && (
                   isAdmin ? (
                     <form onSubmit={handleAddTask} className="mt-6 pt-5 border-t border-dashed border-neutral-200 no-print">
                        <h5 className="text-[11px] font-bold text-neutral-700 uppercase tracking-wider mb-2">
@@ -639,6 +723,7 @@ export default function SOPChecklistView({
                     <button
                       type="button"
                       onClick={() => handleOpenSignaturePad('supervisor')}
+                      disabled={sop.status === 'draft' || isLocked || syncStatus === 'saving'}
                       className="bg-emerald-800/90 hover:bg-emerald-800 text-white text-[10px] font-extrabold px-3 py-1 rounded-sm uppercase tracking-wider"
                     >
                       Bubuhkan TTD
@@ -653,9 +738,9 @@ export default function SOPChecklistView({
                   value={sop.signerSupervisor}
                   onChange={e => {
                     if (isLocked) return;
-                    onUpdateSOP({ ...sop, signerSupervisor: e.target.value });
+                    triggerSOPUpdate({ ...sop, signerSupervisor: e.target.value });
                   }}
-                  disabled={isLocked}
+                  disabled={isLocked || syncStatus === 'saving'}
                   className="font-bold text-center border-b border-black border-dashed w-3/4 mx-auto block pb-0.5 outline-hidden focus:border-emerald-600 bg-transparent text-sm"
                   placeholder="Nama Penanggung Jawab"
                 />
@@ -690,6 +775,7 @@ export default function SOPChecklistView({
                   <button
                     type="button"
                     onClick={() => handleOpenSignaturePad('coordinator')}
+                    disabled={sop.status === 'draft' || isLocked || syncStatus === 'saving'}
                     className="bg-emerald-800/90 hover:bg-emerald-800 text-white text-[10px] font-extrabold px-3 py-1 rounded-sm uppercase tracking-wider"
                   >
                     Bubuhkan TTD
@@ -703,9 +789,9 @@ export default function SOPChecklistView({
                   value={sop.signerCoordinator}
                   onChange={e => {
                     if (isLocked) return;
-                    onUpdateSOP({ ...sop, signerCoordinator: e.target.value });
+                    triggerSOPUpdate({ ...sop, signerCoordinator: e.target.value });
                   }}
-                  disabled={isLocked}
+                  disabled={isLocked || syncStatus === 'saving'}
                   className="font-bold text-center border-b border-black border-dashed w-3/4 mx-auto block pb-0.5 outline-hidden focus:border-emerald-600 bg-transparent text-sm"
                   placeholder="Nama Koordinator Lapangan"
                 />

@@ -509,7 +509,7 @@ export default function SuratJalanView({
       if (!confirmAutoSign) return;
 
       if (!sigAslap) {
-        sigAslap = createDefaultDigitalSignature(loggedInUser?.fullName || 'Ahmad Maghfur (Aslap)', 'ASLAP DAPUR UTAMA');
+        sigAslap = createDefaultDigitalSignature(loggedInUser?.fullName || 'Dewi Rifkah (Aslap)', 'ASLAP DAPUR UTAMA');
       }
       if (!sigReceiver) {
         sigReceiver = createDefaultDigitalSignature(activeDoc.receiverName || getRecipientName(activeDoc.sjKepada), `HUMAS ${activeDoc.sjKepada}`);
@@ -1032,7 +1032,7 @@ export default function SuratJalanView({
                       onClick={() => setActiveSigRequest({
                         targetField: 'sjSignatureAslap',
                         title: 'Tanda Tangan Penanggung Jawab Dapur (Aslap)',
-                        suggestedName: loggedInUser?.fullName || 'Ahmad Maghfur'
+                        suggestedName: loggedInUser?.fullName || 'Dewi Rifkah'
                       })}
                       className="text-[10px] font-bold text-emerald-800 hover:text-emerald-950 flex flex-col items-center gap-1.5 cursor-pointer hover:scale-105 transition-transform"
                     >
@@ -1046,7 +1046,7 @@ export default function SuratJalanView({
               </div>
 
               <div className="border-b border-neutral-900 w-44 font-bold text-neutral-900 uppercase">
-                {activeDoc.sjSignatureAslap ? 'Ahmad Maghfur' : 'Ahmad Maghfur (Aslap)'}
+                {activeDoc.sjSignatureAslap ? 'Dewi Rifkah' : 'Dewi Rifkah (Aslap)'}
               </div>
             </div>
 

@@ -59,6 +59,8 @@ export interface SOPDocument {
   status: 'draft' | 'aktif' | 'selesai'; // draft, active (ready to check), selesai (signed & recorded)
   isLocked?: boolean;
   updatedAt: string;
+  tasksLoaded?: boolean;
+  adminEdited?: boolean;
 }
 
 // Keep a record of historical checklist completions

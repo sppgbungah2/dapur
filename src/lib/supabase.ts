@@ -355,7 +355,7 @@ export function mapUserToProfile(uid: string, email: string): UserProfile {
       id: uid,
       email,
       role: UserRole.ASLAP,
-      fullName: 'Ahmad Maghfur (Aslap)',
+      fullName: 'Dewi Rifkah (Aslap)',
     };
   }
 

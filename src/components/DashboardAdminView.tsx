@@ -168,7 +168,7 @@ export default function DashboardAdminView({
   const handlePublishSelectedDate = async () => {
     try {
       await publishOperationalDocuments(selectedDate);
-      setLockMessage(`Berkas ${selectedDate} diterbitkan dan siap diisi pengguna lapangan.`);
+      setLockMessage(`Surat distribusi ${selectedDate} diterbitkan. SOP diterbitkan terpisah melalui editor setelah admin selesai mengedit.`);
       await fetchMonthlyData(currentMonth);
     } catch (err) {
       setLockMessage(`Gagal menerbitkan berkas: ${err instanceof Error ? err.message : String(err)}`);

@@ -1,7 +1,9 @@
+import { persistSop, serializeSopWrite } from './sopPersistence';
+import type { SOPDocument } from '../types';
 import { supabase, isSupabaseConfigured, asOperationalDate } from './supabase';
 import { fetchPortionsForDate, generateInitialDocsAsync } from '../utils/generateDocs';
 import { getActiveDeliveryTargets, PRIMARY_ASLAP_NAME } from '../utils/deliveryMaster';
-import { generateInitialSOPsForDate, getCanonicalSopId, getSopTaskTableName, normalizeMenuList } from '../presetData';
+import { generateInitialSOPsForDate, normalizeMenuList } from '../presetData';
 import type { SignatureRecord } from '../components/SignatureImportView';
 
 const requireClient = () => {
@@ -42,34 +44,34 @@ export async function initializeOperationalDocuments(dateInput: string, rawMenuL
     orlep_kritik: d.orlepKritik, organoleptik_suhu: d.organoleptikSuhu, orlep_grid: d.orlepGrid,
     orlep_signature: null, uploaded_by: email, photo_url: d.imageUrl, notes: d.comments
   }));
-  const generatedSops = generateInitialSOPsForDate(date, menuList);
-  const sops = generatedSops.map(s => ({
-    id: getCanonicalSopId(date, s.division), date, division: s.division, creator_role: s.creatorRole,
-    creator_name: s.creatorName, is_checked_all: false, signer_supervisor: s.signerSupervisor,
-    signature_supervisor_url: '', signer_coordinator: s.signerCoordinator, signature_coordinator_url: '',
-    status: 'draft', is_locked: false
-  }));
+  const existingSops = await db.from('sops').select('*').eq('date', date);
+  if (existingSops.error) throw existingSops.error;
+  const existingDivisions = new Set((existingSops.data || []).map(s => s.division));
+  const generatedSops = (generateInitialSOPsForDate(date, menuList) as SOPDocument[])
+    .filter(s => !existingDivisions.has(s.division));
   const results = await Promise.all([
     db.from('bast_docs').upsert(bast), db.from('surat_jalan_docs').upsert(sj),
-    db.from('organoleptik_docs').upsert(orlep), db.from('sops').upsert(sops)
+    db.from('organoleptik_docs').upsert(orlep)
   ]);
   const failed = results.find(result => result.error);
   if (failed?.error) throw failed.error;
-  const taskResults = await Promise.all(generatedSops.map(s => {
-    const sopId = getCanonicalSopId(date, s.division);
-    return db.from(getSopTaskTableName(s.division)).upsert(s.tasks.map((task: any, index: number) => ({
-      id: `${sopId}-t-${index}`, sop_id: sopId, text: task.text, completed: false,
-      category: task.category || 'aktif', sort_order: index
-    })));
-  }));
-  const failedTask = taskResults.find(result => result.error);
-  if (failedTask?.error) throw failedTask.error;
+  for (const sop of generatedSops) {
+    await serializeSopWrite(sop.id, () => persistSop(db, sop, true));
+  }
+  const refreshedSops = await db.from('sops').select('*').eq('date', date);
+  if (refreshedSops.error) throw refreshedSops.error;
+  const sops = refreshedSops.data || [];
   return { docs, sops };
 }
 
 export async function setOperationalLock(dateInput: string, isLocked: boolean) {
   const date = asOperationalDate(dateInput);
   const db = requireClient();
+  if (isLocked) {
+    const drafts = await db.from('sops').select('id').eq('date', date).eq('status', 'draft');
+    if (drafts.error) throw drafts.error;
+    if (drafts.data?.length) throw new Error('Terbitkan draft SOP dari editor sebelum mengunci dokumen.');
+  }
   const results = await Promise.all([
     db.from('bast_docs').update({ is_locked: isLocked }).eq('date', date),
     db.from('surat_jalan_docs').update({ is_locked: isLocked }).eq('date', date),
@@ -86,8 +88,7 @@ export async function publishOperationalDocuments(dateInput: string) {
   const results = await Promise.all([
     db.from('bast_docs').update({ status: 'published' }).eq('date', date).eq('is_locked', false),
     db.from('surat_jalan_docs').update({ status: 'published' }).eq('date', date).eq('is_locked', false),
-    db.from('organoleptik_docs').update({ status: 'published' }).eq('date', date).eq('is_locked', false),
-    db.from('sops').update({ status: 'published' }).eq('date', date).eq('is_locked', false)
+    db.from('organoleptik_docs').update({ status: 'published' }).eq('date', date).eq('is_locked', false)
   ]);
   const failed = results.find(result => result.error);
   if (failed?.error) throw failed.error;
@@ -131,7 +132,7 @@ export async function autoSignOperationalDocuments(dateInput: string) {
       db.from('surat_jalan_docs').select('id, sj_kepada').eq('date', date),
       db.from('bast_docs').select('id, bast_sekolah').eq('date', date),
       db.from('organoleptik_docs').select('id, orlep_desa').eq('date', date),
-      db.from('sops').select('id, division').eq('date', date)
+      db.from('sops').select('id, division, status').eq('date', date)
     ]);
     const ready = (sjResult.data?.length || 0) >= expectedShipments && (bastResult.data?.length || 0) >= expectedShipments && (orlepResult.data?.length || 0) >= expectedShipments && (sopResult.data?.length || 0) >= 7;
     if (ready || attempt === 3) break;
@@ -141,6 +142,9 @@ export async function autoSignOperationalDocuments(dateInput: string) {
   if (sourceError) throw sourceError;
   if ((sjResult.data?.length || 0) < expectedShipments || (bastResult.data?.length || 0) < expectedShipments || (orlepResult.data?.length || 0) < expectedShipments || (sopResult.data?.length || 0) < 7) {
     throw new Error('Dokumen belum lengkap di Supabase. Tunggu sinkronisasi Inisiasi Masal selesai, lalu coba kembali.');
+  }
+  if ((sopResult.data || []).some((sop: any) => sop.status === 'draft')) {
+    throw new Error('Masih ada draft SOP. Admin harus mengedit dan menerbitkan setiap SOP sebelum paraf otomatis.');
   }
   const now = new Date().toISOString();
   const updates: PromiseLike<any>[] = [];

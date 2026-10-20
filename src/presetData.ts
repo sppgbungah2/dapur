@@ -331,21 +331,22 @@ export function generateInitialSOPsForDate(date: string, rawMenuList: unknown): 
     if (creatorInfo.role === UserRole.AHLI_GIZI) {
       creatorName = 'Avianti Rahma Dianita';
     } else if (creatorInfo.role === UserRole.ASLAP) {
-      creatorName = 'Ahmad Maghfur (Aslap)';
+      creatorName = 'Dewi Rifkah (Aslap)';
     }
 
     const defaultTasks = getDefaultTasksForDivision(div, menuList).map((t, idx) => ({
       ...t,
-      id: `${date}-${div}-t-${idx}`
+      id: `${getCanonicalSopId(date, div)}-t-${idx}`
     }));
 
     sops.push({
-      id: `${date}-${div}`,
+      id: getCanonicalSopId(date, div),
       date,
       division: div,
       creatorRole: creatorInfo.role,
       creatorName,
       tasks: defaultTasks,
+      tasksLoaded: true,
       isCheckedAll: false,
       signerSupervisor: creatorName,
       signatureSupervisorUrl: '',
@@ -353,7 +354,7 @@ export function generateInitialSOPsForDate(date: string, rawMenuList: unknown): 
       signerCoordinator: `Koordinator ${div.split(' ')[0]}`,
       signatureCoordinatorUrl: '',
       signedCoordinatorAt: null,
-      status: 'aktif',
+      status: 'draft',
       updatedAt: new Date().toISOString()
     });
   });
